@@ -1,0 +1,162 @@
+@import "../../../mixins.scss";
+
+.heroBanner {
+    width: 100%;
+    height: 450px;
+    background: linear-gradient(135deg, #0f172a, #1e293b);
+    display: flex;
+    align-items: center;
+    position: relative;
+    overflow: hidden;
+
+    // Hiệu ứng ánh sáng động
+    &::before {
+        content: "";
+        position: absolute;
+        top: -50%;
+        left: -50%;
+        width: 200%;
+        height: 200%;
+        background: radial-gradient(circle, rgba(255,255,255,0.05) 0%, transparent 70%);
+        animation: rotate 15s linear infinite;
+    }
+
+    @include md {
+        height: 700px;
+    }
+
+    .backdrop-img {
+        width: 100%;
+        height: 100%;
+        position: absolute;
+        top: 0;
+        left: 0;
+        opacity: 0.35;
+        filter: blur(4px);
+        overflow: hidden;
+
+        .lazy-load-image-background {
+            width: 100%;
+            height: 100%;
+            img {
+                width: 100%;
+                height: 100%;
+                object-fit: cover;
+                object-position: center;
+                transform: scale(1.1);
+                transition: transform 8s ease;
+            }
+        }
+    }
+
+    .opacity-layer {
+        width: 100%;
+        height: 300px;
+        background: linear-gradient(180deg, rgba(15,23,42,0) 0%, #0f172a 100%);
+        position: absolute;
+        bottom: 0;
+        left: 0;
+    }
+
+    .heroBannerContent {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        color: white;
+        text-align: center;
+        position: relative;
+        z-index: 2;
+        max-width: 800px;
+        margin: 0 auto;
+
+        .title {
+            font-size: 52px;
+            font-weight: 800;
+            letter-spacing: 1px;
+            margin-bottom: 15px;
+            text-shadow: 0 4px 20px rgba(0,0,0,0.6);
+
+            @include md {
+                font-size: 95px;
+            }
+        }
+
+        .subTitle {
+            font-size: 20px;
+            font-weight: 400;
+            opacity: 0.9;
+            margin-bottom: 40px;
+            @include md {
+                font-size: 26px;
+            }
+        }
+
+        .searchInput {
+            display: flex;
+            align-items: center;
+            width: 100%;
+            max-width: 600px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 40px;
+            backdrop-filter: blur(10px);
+            box-shadow: 0 0 20px rgba(0,0,0,0.3);
+
+            input {
+                flex: 1;
+                height: 55px;
+                background: transparent;
+                color: white;
+                border: none;
+                outline: none;
+                padding: 0 20px;
+                font-size: 16px;
+
+                &::placeholder {
+                    color: rgba(255,255,255,0.6);
+                }
+
+                @include md {
+                    height: 65px;
+                    font-size: 20px;
+                }
+            }
+
+            button {
+                width: 120px;
+                height: 55px;
+                background: linear-gradient(90deg, #6366f1, #8b5cf6, #ec4899);
+                background-size: 300% 300%;
+                color: white;
+                border: none;
+                border-radius: 0 40px 40px 0;
+                font-size: 16px;
+                font-weight: 600;
+                cursor: pointer;
+                transition: all 0.3s ease;
+                animation: gradientMove 6s ease infinite;
+
+                &:hover {
+                    transform: translateY(-2px) scale(1.03);
+                    box-shadow: 0 8px 25px rgba(0,0,0,0.4);
+                }
+
+                @include md {
+                    width: 160px;
+                    height: 65px;
+                    font-size: 18px;
+                }
+            }
+        }
+    }
+}
+
+@keyframes rotate {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+@keyframes gradientMove {
+    0% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+    100% { background-position: 0% 50%; }
+}

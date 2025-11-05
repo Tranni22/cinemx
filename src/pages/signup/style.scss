@@ -1,0 +1,165 @@
+/* Container chính */
+.signup-container {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+  background: linear-gradient(-45deg, #0f172a, #1e293b, #3b4c5d, #0f172a);
+  background-size: 400% 400%;
+  animation: gradientMove 12s ease infinite;
+  padding: 1rem;
+}
+
+/* Hộp đăng ký */
+.signup-box {
+  background: rgba(42, 59, 76, 0.85);
+  padding: 2.5rem 2rem;
+  border-radius: 1rem;
+  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.4);
+  width: 100%;
+  max-width: 26rem;
+  transition: all 0.3s;
+  animation: slideIn 0.8s ease-out;
+  backdrop-filter: blur(10px);
+}
+
+.signup-box:hover {
+  box-shadow: 0 12px 50px rgba(0, 0, 0, 0.6), 0 0 25px rgba(229, 9, 20, 0.4);
+}
+
+/* Tiêu đề */
+.signup-box h2 {
+  font-size: 2.2rem;
+  font-weight: 800;
+  color: #fff;
+  margin-bottom: 1.5rem;
+  text-align: center;
+  text-shadow: 0 3px 12px rgba(0,0,0,0.6);
+  letter-spacing: 1px;
+}
+
+/* Trường nhập liệu */
+.signup-box label {
+  color: #ddd;
+  display: block;
+  margin-bottom: 0.5rem;
+  font-weight: 500;
+}
+
+.signup-inputField {
+  margin-bottom: 18px;
+}
+
+.signup-box input {
+  width: 100%;
+  padding: 0.85rem 1rem;
+  border: 1px solid #444;
+  border-radius: 0.5rem;
+  background-color: rgba(59, 76, 93, 0.9);
+  color: white;
+  font-size: 1rem;
+  transition: border-color 0.3s, box-shadow 0.3s;
+}
+
+.signup-box input:focus {
+  border-color: #e50914;
+  box-shadow: 0 0 8px rgba(229, 9, 20, 0.6);
+  outline: none;
+}
+
+/* Nút đăng ký */
+.signup-box button {
+  width: 100%;
+  padding: 0.85rem;
+  border-radius: 0.5rem;
+  background: linear-gradient(90deg, #e50914, #b20710, #ff3d3d);
+  background-size: 300% 300%;
+  color: white;
+  font-weight: bold;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: transform 0.3s, box-shadow 0.3s;
+  animation: gradientMove 6s ease infinite;
+}
+
+.signup-box button:hover {
+  transform: translateY(-2px) scale(1.02);
+  box-shadow: 0 8px 25px rgba(229, 9, 20, 0.5);
+}
+
+/* Thông báo */
+.successMessage,
+.alertMessage {
+  position: fixed;
+  top: 10%;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 10px 20px;
+  border-radius: 5px;
+  font-size: 14px;
+  text-align: center;
+  max-width: 90%;
+  box-shadow: 0px 4px 6px rgba(0, 0, 0, 0.1);
+  z-index: 1000;
+  visibility: hidden;
+  opacity: 0;
+  transition: visibility 0s, opacity 0.3s ease-in-out;
+  animation: fadeIn 1s ease-in-out;
+}
+
+.successMessage {
+  background-color: #28a745;
+  color: #fff;
+}
+
+.alertMessage {
+  background-color: #ffcc00;
+  color: #333;
+}
+
+.successMessage.show,
+.alertMessage.show {
+  visibility: visible;
+  opacity: 1;
+}
+
+/* Hiệu ứng */
+@keyframes fadeIn {
+  0% {
+    opacity: 0;
+    transform: translateX(-50%) translateY(-20px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}
+
+@keyframes slideIn {
+  0% {
+    transform: translateY(50px);
+    opacity: 0;
+  }
+  100% {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+/* Shake khi lỗi */
+.signup-box.shake {
+  animation: shake 0.5s ease-in-out;
+}
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  20%, 60% { transform: translateX(-8px); }
+  40%, 80% { transform: translateX(8px); }
+}
+
+/* Gradient động */
+@keyframes gradientMove {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
