@@ -5210,10 +5210,11 @@ async function runAgentTurn(userInput) {
 // hoàn thành (in đúng PROJECT_DONE_MARKER) hoặc chạm giới hạn MAX_PROJECT_ROUNDS (tránh chạy vô hạn tốn token).
 // Lưu ý: lệnh/thao tác RỦI RO CAO vẫn bị auto-từ-chối như bình thường (xem autoDenyAndContinue), không bị lách qua.
 const PROJECT_DONE_MARKER = '===PROJECT_DONE===';
-// 📎 Mặc định nâng từ 25 -> 100: chạy /project qua đêm/lúc bận việc thì 1 dự án phức tạp dễ cần
-// nhiều "vòng lớn" hơn 25, nhất là khi có lúc phải chờ mega-retry do hết quota tạm thời. Vẫn chỉnh
-// được qua .env: PROJECT_MAX_ROUNDS=<số> nếu muốn giới hạn chặt hơn để kiểm soát chi phí token.
-const MAX_PROJECT_ROUNDS = Number(process.env.PROJECT_MAX_ROUNDS) || 100;
+// 📎 Mặc định nâng từ 25 -> 100 -> 200: chạy /project qua đêm/lúc bận việc thì 1 dự án phức tạp dễ cần
+// nhiều "vòng lớn" hơn 100, nhất là khi có lúc phải chờ mega-retry do hết quota tạm thời hoặc dự án
+// nhiều file cần nhiều bước sửa/verify. Vẫn chỉnh được qua .env: PROJECT_MAX_ROUNDS=<số> nếu muốn
+// giới hạn chặt hơn để kiểm soát chi phí token.
+const MAX_PROJECT_ROUNDS = Number(process.env.PROJECT_MAX_ROUNDS) || 200;
 
 // 📁 Đảm bảo /project luôn có thư mục làm việc RÕ RÀNG trước khi vào vòng lặp tự động.
 // - Nếu ĐÃ khoá sẵn (do /workdir gõ trước đó, hoặc 1 lần /project trước đó trong phiên này) -> dùng luôn, KHÔNG hỏi lại gì cả.
