@@ -1141,7 +1141,7 @@ const tools = [{
     },
     {
       name: 'web_fetch_page',
-      description: 'Mở 1 trang web CỤ THỂ bằng trình duyệt Chromium thật (đọc được cả trang JS render động, không chỉ HTML tĩnh) và lấy TOÀN BỘ nội dung text hiển thị trên trang (không giới hạn snippet ngắn như search_web). Dùng SAU search_web để đọc sâu 1 nguồn cụ thể (tài liệu chính thức, bài StackOverflow đầy đủ, bài viết dài...), hoặc khi người dùng đưa thẳng 1 link cần đọc/tóm tắt/trả lời câu hỏi dựa trên nội dung link đó.',
+      description: 'Mở 1 trang web CỤ THỂ bằng trình duyệt Chromium thật (đọc được cả trang JS render động, không chỉ HTML tĩnh) và lấy TOÀN BỘ nội dung text hiển thị trên trang (không giới hạn snippet ngắn như search_web). Dùng SAU search_web để đọc sâu 1 nguồn cụ thể (tài liệu chính thức, bài StackOverflow đầy đủ, bài viết dài...), hoặc khi người dùng đưa thẳng 1 link cần đọc/tóm tắt/trả lời câu hỏi dựa trên nội dung link đó. 🔐 Dùng CHUNG hồ sơ đăng nhập liên tục với browser_open - nếu người dùng đã từng tự đăng nhập 1 trang (vd Facebook) qua browser_open, tool này đọc được cả nội dung CẦN ĐĂNG NHẬP mới xem được của trang đó, không chỉ nội dung công khai.',
       parameters: {
         type: 'object',
         properties: {
@@ -1149,6 +1149,19 @@ const tools = [{
           question: { type: 'string', description: 'Câu hỏi cụ thể cần tìm câu trả lời trong nội dung trang (tuỳ chọn) - giúp tập trung đọc đúng phần cần thiết' }
         },
         required: ['url']
+      }
+    },
+    {
+      name: 'deep_research',
+      description: 'TRA CỨU SÂU - gộp search_web + web_fetch_page vào 1 lần gọi: tự tìm các nguồn tốt nhất trên Tavily rồi TỰ ĐỘNG mở & đọc ĐẦY ĐỦ nội dung từng nguồn (không chỉ snippet ~300 ký tự như search_web), gộp lại thành 1 kết quả nhiều nguồn để đối chiếu. ƯU TIÊN dùng tool này (thay vì gọi search_web rồi tự web_fetch_page thủ công từng URL) khi: câu hỏi cần độ chắc chắn cao/cần đối chiếu nhiều nguồn, hoặc chủ đề phức tạp mà snippet ngắn rõ ràng không đủ trả lời chính xác. Chậm hơn search_web (phải mở thật từng trang) nên KHÔNG dùng cho câu hỏi đơn giản 1 sự kiện/1 con số - lúc đó search_web là đủ.',
+      parameters: {
+        type: 'object',
+        properties: {
+          query: { type: 'string', description: 'Từ khoá tìm kiếm, ngắn gọn cụ thể' },
+          num_sources: { type: 'number', description: 'Số lượng nguồn cần mở & đọc đầy đủ, mặc định 3 (tối đa 5). Tăng lên khi cần đối chiếu kỹ hơn, giảm xuống khi chỉ cần xác nhận nhanh.' },
+          question: { type: 'string', description: 'Câu hỏi cụ thể cần trả lời từ các nguồn (tuỳ chọn) - giúp tập trung đọc đúng phần cần thiết ở mỗi trang' }
+        },
+        required: ['query']
       }
     },
     {
@@ -1274,7 +1287,7 @@ const tools = [{
     },
     {
       name: 'browser_open',
-      description: 'ƯU TIÊN dùng tool này (thay vì mở bằng open_app + mouse_click mù toạ độ) để TEST project web/HTML/JS: mở URL (file HTML local như "file:///C:/path/index.html", hoặc URL web như "http://localhost:3000") trong 1 trình duyệt Chromium THẬT do agent điều khiển trực tiếp bằng code (Puppeteer) - không phải chụp màn hình desktop. Sau khi mở, có thể dùng browser_click/browser_type để thao tác CHÍNH XÁC theo CSS selector (không đoán toạ độ pixel), browser_eval để kiểm tra biến/hàm JS thật, browser_get_console_errors để đọc lỗi console THẬT (điều mà chụp màn hình thường không bao giờ thấy được). Cần cài "puppeteer" trước (npm install puppeteer) - nếu chưa cài sẽ báo lỗi rõ hướng dẫn cài.',
+      description: 'ƯU TIÊN dùng tool này (thay vì mở bằng open_app + mouse_click mù toạ độ) để TEST project web/HTML/JS: mở URL (file HTML local như "file:///C:/path/index.html", hoặc URL web như "http://localhost:3000") trong 1 trình duyệt Chromium THẬT do agent điều khiển trực tiếp bằng code (Puppeteer) - không phải chụp màn hình desktop. Sau khi mở, có thể dùng browser_click/browser_type để thao tác CHÍNH XÁC theo CSS selector (không đoán toạ độ pixel), browser_eval để kiểm tra biến/hàm JS thật, browser_get_console_errors để đọc lỗi console THẬT (điều mà chụp màn hình thường không bao giờ thấy được). Cần cài "puppeteer" trước (npm install puppeteer) - nếu chưa cài sẽ báo lỗi rõ hướng dẫn cài. 🔐 Trình duyệt dùng HỒ SƠ LIÊN TỤC (cookie/đăng nhập được lưu lại giữa các lần mở) - nếu người dùng đã từng tự tay đăng nhập 1 trang nào đó (Facebook, Gmail...) trong cửa sổ này trước đây, mở lại URL của trang đó sẽ vẫn ở trạng thái ĐÃ ĐĂNG NHẬP, không cần đăng nhập lại. Nếu trang yêu cầu đăng nhập mà chưa từng đăng nhập, PHẢI mở với headless:false rồi báo người dùng tự đăng nhập thủ công trong cửa sổ hiện ra - agent không được tự bịa/nhập giúp mật khẩu.',
       parameters: {
         type: 'object',
         properties: {
@@ -1921,6 +1934,16 @@ function protectedPathError(filePath) {
 // agent sang máy khác (tên user Windows khác) vẫn tự chạy đúng, không cần sửa code hay set lại .env.
 const AUTO_PROJECT_BASE_DIR = process.env.AUTO_PROJECT_DIR || path.join(os.homedir(), 'Downloads', 'thu muc lam viec agent');
 
+// 🗂️ HỒ SƠ TRÌNH DUYỆT LIÊN TỤC (Puppeteer userDataDir) - dùng CHUNG cho cả browser_open (mở cửa sổ thật
+// để test/thao tác) VÀ web_fetch_page (đọc nội dung trang) VÀ deep_research (đọc nhiều trang). Nhờ vậy,
+// nếu người dùng đã TỰ TAY đăng nhập 1 trang nào đó (vd Facebook, Gmail...) 1 lần trong cửa sổ browser_open
+// (headless:false), cookie/localStorage được LƯU XUỐNG ĐĨA tại thư mục này - các lần gọi browser_open hoặc
+// web_fetch_page SAU (kể cả sau khi tắt hẳn agent rồi mở lại) đều dùng lại đúng phiên đăng nhập đó, không
+// phải đăng nhập lại. Agent KHÔNG tự động điền/gửi mật khẩu hộ người dùng trong bất kỳ trường hợp nào -
+// việc đăng nhập ban đầu luôn do người dùng tự làm thủ công trong cửa sổ trình duyệt thật hiện ra.
+// Đổi được qua .env: AGENT_BROWSER_PROFILE_DIR
+const AGENT_BROWSER_PROFILE_DIR = process.env.AGENT_BROWSER_PROFILE_DIR || path.join(AGENT_DIR, '.browser-profile');
+
 // Rút gọn 1 câu mục tiêu dài thành tên thư mục hợp lệ trên Windows: bỏ ký tự cấm (\/:*?"<>|), gộp
 // khoảng trắng thừa, giới hạn độ dài, và loại bỏ khoảng trắng/dấu chấm ở cuối (Windows không cho phép).
 function slugifyProjectName(goal) {
@@ -2410,9 +2433,11 @@ function executeStopBackgroundProcess(args) {
   return { success: true, message: results.join('\n') };
 }
 
-// 🔎 Tìm kiếm web bằng Tavily - an toàn (chỉ đọc), không cần hỏi xác nhận
+// 🔎 Hàm LÕI gọi Tavily, trả về DỮ LIỆU CÓ CẤU TRÚC (answer + results[{title,content,url}]) thay vì text
+// đã format sẵn - để cả executeSearchWeb (chỉ cần hiển thị) VÀ executeDeepResearch (cần lấy url để đọc sâu
+// tiếp bằng web_fetch_page) đều dùng chung, không lặp lại logic xoay key/gọi API 2 nơi.
 // Tự động xoay qua TẤT CẢ các TAVILY_API_KEY_* nếu key đang dùng bị lỗi quota/rate-limit/không hợp lệ.
-async function executeSearchWeb(args) {
+async function tavilySearchRaw(query, { maxResults = 5, searchDepth = 'basic' } = {}) {
   if (TAVILY_KEYS.length === 0) {
     return { success: false, error: 'Chưa cấu hình TAVILY_API_KEY nào trong file .env' };
   }
@@ -2427,9 +2452,9 @@ async function executeSearchWeb(args) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           api_key: currentTavilyKey(),
-          query: args.query,
-          search_depth: 'basic',
-          max_results: 5,
+          query,
+          search_depth: searchDepth,
+          max_results: maxResults,
           include_answer: true
         })
       });
@@ -2442,21 +2467,16 @@ async function executeSearchWeb(args) {
           tavilyKeyIndex = (tavilyKeyIndex + 1) % TAVILY_KEYS.length;
           continue;
         }
-        logAction({ label: `Search: "${args.query}"`, status: 'fail' });
         return { success: false, error: lastError };
       }
 
       const data = await response.json();
-      console.log(c.gray(`   🔎 Đã search: "${args.query}" (${data.results?.length || 0} kết quả, key #${tavilyKeyIndex + 1})`));
-      logAction({ label: `Search: "${args.query}"`, status: 'ok' });
-
-      const parts = [];
-      if (data.answer) parts.push(`Tóm tắt: ${data.answer}`);
-      if (Array.isArray(data.results)) {
-        parts.push(data.results.map((r, i) => `${i + 1}. ${r.title}\n${r.content?.slice(0, 300)}\nNguồn: ${r.url}`).join('\n\n'));
-      }
-
-      return { success: true, result: parts.join('\n\n').slice(0, 6000) };
+      console.log(c.gray(`   🔎 Đã search: "${query}" (${data.results?.length || 0} kết quả, key #${tavilyKeyIndex + 1})`));
+      return {
+        success: true,
+        answer: data.answer || '',
+        results: Array.isArray(data.results) ? data.results.map(r => ({ title: r.title, content: r.content || '', url: r.url })) : []
+      };
     } catch (err) {
       lastError = err.message;
       if (attempt < maxAttempts) {
@@ -2464,13 +2484,74 @@ async function executeSearchWeb(args) {
         tavilyKeyIndex = (tavilyKeyIndex + 1) % TAVILY_KEYS.length;
         continue;
       }
-      logAction({ label: `Search: "${args.query}"`, status: 'fail' });
       return { success: false, error: lastError };
     }
   }
 
-  logAction({ label: `Search: "${args.query}"`, status: 'fail' });
   return { success: false, error: lastError || 'Tất cả Tavily key đều lỗi.' };
+}
+
+// 🔎 Tìm kiếm web bằng Tavily - an toàn (chỉ đọc), không cần hỏi xác nhận. Trả về TÓM TẮT NGẮN nhiều nguồn.
+async function executeSearchWeb(args) {
+  const raw = await tavilySearchRaw(args.query, { maxResults: 5 });
+  if (!raw.success) {
+    logAction({ label: `Search: "${args.query}"`, status: 'fail' });
+    return raw;
+  }
+  logAction({ label: `Search: "${args.query}"`, status: 'ok' });
+
+  const parts = [];
+  if (raw.answer) parts.push(`Tóm tắt: ${raw.answer}`);
+  if (raw.results.length > 0) {
+    parts.push(raw.results.map((r, i) => `${i + 1}. ${r.title}\n${r.content?.slice(0, 300)}\nNguồn: ${r.url}`).join('\n\n'));
+  }
+
+  return { success: true, result: parts.join('\n\n').slice(0, 6000) };
+}
+
+// 🔬 TRA CỨU SÂU (deep_research) - gộp 2 bước search_web -> web_fetch_page vào 1 lần gọi: search Tavily để
+// tìm ra các nguồn tốt nhất, rồi TỰ ĐỘNG mở & đọc ĐẦY ĐỦ nội dung từng nguồn đó (không dừng ở snippet ~300
+// ký tự nữa) và gộp lại thành 1 kết quả tổng hợp nhiều nguồn. Dùng khi câu hỏi cần ĐỘ CHẮC CHẮN CAO (cần
+// đối chiếu nhiều nguồn, hoặc snippet ngắn của search_web rõ ràng không đủ trả lời) thay vì phải tự gọi
+// search_web rồi web_fetch_page thủ công nhiều lần liên tiếp.
+async function executeDeepResearch(args) {
+  const { query, num_sources = 3, question = '' } = args;
+  const numSources = Math.min(Math.max(parseInt(num_sources, 10) || 3, 1), 5);
+  console.log(c.cyan(`   🔬 [Deep Research] "${query}" (đọc sâu ${numSources} nguồn)`));
+
+  const raw = await tavilySearchRaw(query, { maxResults: Math.max(numSources, 5) });
+  if (!raw.success) {
+    logAction({ label: `Deep research: "${query}"`, status: 'fail' });
+    return raw;
+  }
+  if (raw.results.length === 0) {
+    logAction({ label: `Deep research: "${query}"`, status: 'fail' });
+    return { success: false, error: 'Tavily không trả về nguồn nào cho từ khoá này.' };
+  }
+
+  const topUrls = raw.results.slice(0, numSources);
+  const sources = [];
+  for (const r of topUrls) {
+    const fetched = await executeWebFetchPage({ url: r.url, question });
+    if (fetched.success) {
+      sources.push({ title: fetched.title || r.title, url: r.url, content: fetched.content.slice(0, 4000) });
+    } else {
+      // 1 nguồn lỗi (timeout, chặn bot...) không nên làm hỏng cả kết quả - ghi nhận snippet ngắn của search_web thay thế.
+      sources.push({ title: r.title, url: r.url, content: `[Không mở được trang đầy đủ: ${fetched.error}] Snippet ngắn từ search: ${r.content?.slice(0, 300) || '(không có)'}` });
+    }
+  }
+
+  logAction({ label: `Deep research: "${query}" (${sources.length} nguồn)`, status: 'ok' });
+  console.log(c.gray(`   🔬 [Deep Research] Xong - đã đọc sâu ${sources.length}/${topUrls.length} nguồn.`));
+
+  const formatted = sources.map((s, i) => `### Nguồn ${i + 1}: ${s.title}\n(${s.url})\n\n${s.content}`).join('\n\n---\n\n');
+  return {
+    success: true,
+    tavilyAnswer: raw.answer || undefined,
+    sourcesRead: sources.length,
+    result: formatted,
+    hint: question ? `Câu hỏi cần trả lời từ tổng hợp các nguồn trên: ${question}` : 'Đối chiếu thông tin GIỐNG NHAU giữa các nguồn để tăng độ tin cậy; nếu các nguồn MÂU THUẪN nhau, nêu rõ sự khác biệt thay vì chọn đại 1 nguồn.'
+  };
 }
 
 // 📄 Đọc TOÀN BỘ nội dung text của 1 trang web CỤ THỂ (không chỉ đoạn tóm tắt ngắn 300 ký tự như
@@ -2537,22 +2618,34 @@ async function executeHttpRequest(args) {
   }
 }
 
+// 📄 Đọc nội dung 1 trang, dùng CHUNG hồ sơ đăng nhập liên tục (AGENT_BROWSER_PROFILE_DIR) với browser_open:
+// - Nếu browserInstance (từ browser_open) đang mở sẵn -> mở thêm 1 tab MỚI trong CHÍNH browser đó (tránh
+//   xung đột "profile đang bị khoá bởi tiến trình khác" khi 2 Puppeteer cùng trỏ 1 userDataDir cùng lúc),
+//   và tận dụng luôn phiên đăng nhập đang có trong cửa sổ đó (vd đang đăng nhập Facebook sẵn).
+// - Nếu chưa có browserInstance nào đang mở -> tự mở 1 browser tạm dùng CHUNG userDataDir (vẫn đọc được
+//   cookie/đăng nhập đã lưu từ các lần trước), đóng lại ngay sau khi đọc xong để không giữ khoá profile.
 async function executeWebFetchPage(args) {
   const { url, question = '' } = args;
   console.log(c.cyan(`   📄 Đang mở & đọc trang: ${url}`));
   let tempBrowser = null;
+  let page = null;
+  const reuseSharedBrowser = !!browserInstance;
   try {
-    const mod = await loadPuppeteer();
-    const puppeteer = mod.default;
-    tempBrowser = await puppeteer.launch({ headless: 'new' });
-    const page = await tempBrowser.newPage();
+    if (reuseSharedBrowser) {
+      page = await browserInstance.newPage();
+    } else {
+      const mod = await loadPuppeteer();
+      const puppeteer = mod.default;
+      tempBrowser = await puppeteer.launch({ headless: 'new', userDataDir: AGENT_BROWSER_PROFILE_DIR });
+      page = await tempBrowser.newPage();
+    }
     await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36');
     await page.goto(url, { waitUntil: 'networkidle2', timeout: 20000 });
     const title = await page.title();
     const text = await page.evaluate(() => document.body?.innerText || '');
     const cleanedText = text.replace(/\n{3,}/g, '\n\n').trim();
     logAction({ label: `Đọc trang web: ${url}`, status: 'ok' });
-    console.log(c.gray(`   📄 Đã đọc xong "${title}" (${cleanedText.length} ký tự).`));
+    console.log(c.gray(`   📄 Đã đọc xong "${title}" (${cleanedText.length} ký tự)${reuseSharedBrowser ? ' [dùng chung phiên đăng nhập của browser_open]' : ''}.`));
     return {
       success: true,
       title,
@@ -2564,6 +2657,8 @@ async function executeWebFetchPage(args) {
     logAction({ label: `Đọc trang web: ${url}`, status: 'fail' });
     return { success: false, error: err.message };
   } finally {
+    // Chỉ đóng tab (không đóng cả browserInstance dùng chung - người dùng có thể vẫn đang test dở ở tab khác).
+    if (reuseSharedBrowser && page) { try { await page.close(); } catch { /* đã đóng sẵn */ } }
     if (tempBrowser) { try { await tempBrowser.close(); } catch { /* đã đóng sẵn */ } }
   }
 }
@@ -3027,7 +3122,7 @@ async function executeBrowserOpen(args) {
     const mod = await loadPuppeteer();
     const puppeteer = mod.default;
     if (browserInstance) { try { await browserInstance.close(); } catch { /* bỏ qua nếu đã đóng sẵn */ } }
-    browserInstance = await puppeteer.launch({ headless: headless ? 'new' : false, args: ['--start-maximized'] });
+    browserInstance = await puppeteer.launch({ headless: headless ? 'new' : false, args: ['--start-maximized'], userDataDir: AGENT_BROWSER_PROFILE_DIR });
     browserPage = (await browserInstance.pages())[0] || await browserInstance.newPage();
     browserConsoleLog = [];
     browserPage.on('console', msg => {
