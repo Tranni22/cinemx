@@ -1944,6 +1944,42 @@ const AUTO_PROJECT_BASE_DIR = process.env.AUTO_PROJECT_DIR || path.join(os.homed
 // Đổi được qua .env: AGENT_BROWSER_PROFILE_DIR
 const AGENT_BROWSER_PROFILE_DIR = process.env.AGENT_BROWSER_PROFILE_DIR || path.join(AGENT_DIR, '.browser-profile');
 
+// 🌐 TÌM TRÌNH DUYỆT THẬT (Chrome/Edge đã cài trên máy) thay vì dùng Chromium "for Testing" mà package
+// puppeteer tự tải kèm - bản Chromium đó là bản KHÔNG chính chủ Google (thiếu codec/plugin/thành phần của
+// bản Chrome thật), nhiều trang có bot-detection mạnh như Facebook rất dễ fingerprint ra và chặn/bắt xác
+// minh liên tục. Dùng executablePath trỏ thẳng vào Chrome/Edge thật giúp trông giống trình duyệt bình
+// thường hơn hẳn, giảm hẳn khả năng bị chặn. Có thể ép đường dẫn cụ thể qua .env: AGENT_BROWSER_EXECUTABLE
+function findSystemBrowserExecutable() {
+  if (process.env.AGENT_BROWSER_EXECUTABLE && fs.existsSync(process.env.AGENT_BROWSER_EXECUTABLE)) {
+    return process.env.AGENT_BROWSER_EXECUTABLE;
+  }
+  const candidates = process.platform === 'win32' ? [
+    path.join(process.env['PROGRAMFILES'] || 'C:\\Program Files', 'Google\\Chrome\\Application\\chrome.exe'),
+    path.join(process.env['PROGRAMFILES(X86)'] || 'C:\\Program Files (x86)', 'Google\\Chrome\\Application\\chrome.exe'),
+    path.join(process.env['LOCALAPPDATA'] || '', 'Google\\Chrome\\Application\\chrome.exe'),
+    path.join(process.env['PROGRAMFILES'] || 'C:\\Program Files', 'Microsoft\\Edge\\Application\\msedge.exe'),
+    path.join(process.env['PROGRAMFILES(X86)'] || 'C:\\Program Files (x86)', 'Microsoft\\Edge\\Application\\msedge.exe')
+  ] : process.platform === 'darwin' ? [
+    '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+    '/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge'
+  ] : [
+    '/usr/bin/google-chrome', '/usr/bin/google-chrome-stable', '/usr/bin/microsoft-edge', '/usr/bin/microsoft-edge-stable', '/usr/bin/chromium-browser', '/usr/bin/chromium'
+  ];
+  return candidates.find(p => p && fs.existsSync(p)) || null;
+}
+let cachedSystemBrowserPath; // undefined = chưa tra lần nào, null = đã tra nhưng không tìm thấy trình duyệt thật nào
+function getSystemBrowserExecutable() {
+  if (cachedSystemBrowserPath === undefined) {
+    cachedSystemBrowserPath = findSystemBrowserExecutable();
+    if (cachedSystemBrowserPath) {
+      console.log(c.gray(`   🌐 [Browser] Dùng trình duyệt thật đã cài trên máy: ${cachedSystemBrowserPath}`));
+    } else {
+      console.log(c.yellow(`   ⚠️ [Browser] Không tìm thấy Chrome/Edge cài sẵn trên máy - dùng tạm Chromium đi kèm puppeteer (dễ bị 1 số trang có bot-detection mạnh như Facebook chặn hơn). Cài Google Chrome hoặc set AGENT_BROWSER_EXECUTABLE trong .env trỏ tới file .exe trình duyệt để dùng bản thật.`));
+    }
+  }
+  return cachedSystemBrowserPath;
+}
+
 // Rút gọn 1 câu mục tiêu dài thành tên thư mục hợp lệ trên Windows: bỏ ký tự cấm (\/:*?"<>|), gộp
 // khoảng trắng thừa, giới hạn độ dài, và loại bỏ khoảng trắng/dấu chấm ở cuối (Windows không cho phép).
 function slugifyProjectName(goal) {
@@ -2636,7 +2672,7 @@ async function executeWebFetchPage(args) {
     } else {
       const mod = await loadPuppeteer();
       const puppeteer = mod.default;
-      tempBrowser = await puppeteer.launch({ headless: 'new', userDataDir: AGENT_BROWSER_PROFILE_DIR });
+      tempBrowser = await puppeteer.launch({ headless: 'new', userDataDir: AGENT_BROWSER_PROFILE_DIR, ...(getSystemBrowserExecutable() ? { executablePath: getSystemBrowserExecutable() } : {}) });
       page = await tempBrowser.newPage();
     }
     await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36');
@@ -3122,8 +3158,17 @@ async function executeBrowserOpen(args) {
     const mod = await loadPuppeteer();
     const puppeteer = mod.default;
     if (browserInstance) { try { await browserInstance.close(); } catch { /* bỏ qua nếu đã đóng sẵn */ } }
-    browserInstance = await puppeteer.launch({ headless: headless ? 'new' : false, args: ['--start-maximized'], userDataDir: AGENT_BROWSER_PROFILE_DIR });
-    browserPage = (await browserInstance.pages())[0] || await browserInstance.newPage();
+    browserInstance = await puppeteer.launch({ headless: headless ? 'new' : false, args: ['--start-maximized'], userDataDir: AGENT_BROWSER_PROFILE_DIR, ...(getSystemBrowserExecutable() ? { executablePath: getSystemBrowserExecutable() } : {}) });
+    // ⚠️ KHÔNG dùng pages()[0]: hồ sơ liên tục có thể khiến Chrome tự KHÔI PHỤC lại các tab đã mở ở lần
+    // trước (session restore), nên pages()[0] có thể là 1 tab CŨ đã restore chứ không phải tab trống mới
+    // -> nếu điều hướng nhầm tab đó, tab đang hiện trên màn hình (active) lại là tab KHÁC, gây lệch giữa
+    // "tab agent nghĩ mình đang điều khiển" và "tab người dùng thực sự thấy". Luôn tạo 1 tab MỚI riêng để
+    // điều khiển, đưa nó lên trước, rồi đóng hết các tab còn sót lại (kể cả tab restore từ phiên trước) để
+    // không còn mập mờ tab nào đang được dùng.
+    const staleTabs = await browserInstance.pages();
+    browserPage = await browserInstance.newPage();
+    await browserPage.bringToFront();
+    for (const p of staleTabs) { try { await p.close(); } catch { /* có thể đã đóng sẵn hoặc đang là tab cuối không đóng được */ } }
     browserConsoleLog = [];
     browserPage.on('console', msg => {
       const t = msg.type();
