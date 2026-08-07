@@ -1980,6 +1980,19 @@ function getSystemBrowserExecutable() {
   return cachedSystemBrowserPath;
 }
 
+// 🔓 Dọn file KHOÁ (lock) còn sót lại trong hồ sơ trình duyệt liên tục trước mỗi lần mở - nguyên nhân RẤT
+// PHỔ BIẾN gây lỗi "Protocol error (Target.setAutoAttach): Target closed" ngay sau khi launch: Chrome tự
+// đặt file SingletonLock/SingletonCookie/SingletonSocket ngay trong userDataDir để chặn 2 tiến trình cùng
+// dùng chung 1 hồ sơ 1 lúc - nếu lần trước tiến trình cũ (crash, bị kill cứng, hoặc vừa đổi executablePath
+// giữa Chromium <-> Chrome thật khiến 2 bản coi nhau là "phiên khác") không tự dọn sạch file này khi thoát,
+// lần mở SAU sẽ bị Chrome thấy có khoá tưởng đang có phiên sống nên tự thoát ngay lập tức. Xoá thử các file
+// này trước mỗi lần launch (bỏ qua nếu không tồn tại hoặc đang thực sự bị khoá bởi 1 tiến trình sống khác).
+function cleanStaleBrowserProfileLocks() {
+  for (const f of ['SingletonLock', 'SingletonCookie', 'SingletonSocket']) {
+    try { fs.unlinkSync(path.join(AGENT_BROWSER_PROFILE_DIR, f)); } catch { /* không tồn tại, hoặc đang bị khoá thật bởi tiến trình sống - bỏ qua, không phải lỗi nghiêm trọng */ }
+  }
+}
+
 // Rút gọn 1 câu mục tiêu dài thành tên thư mục hợp lệ trên Windows: bỏ ký tự cấm (\/:*?"<>|), gộp
 // khoảng trắng thừa, giới hạn độ dài, và loại bỏ khoảng trắng/dấu chấm ở cuối (Windows không cho phép).
 function slugifyProjectName(goal) {
@@ -2672,6 +2685,7 @@ async function executeWebFetchPage(args) {
     } else {
       const mod = await loadPuppeteer();
       const puppeteer = mod.default;
+      cleanStaleBrowserProfileLocks();
       tempBrowser = await puppeteer.launch({ headless: 'new', userDataDir: AGENT_BROWSER_PROFILE_DIR, ...(getSystemBrowserExecutable() ? { executablePath: getSystemBrowserExecutable() } : {}) });
       page = await tempBrowser.newPage();
     }
@@ -3158,6 +3172,7 @@ async function executeBrowserOpen(args) {
     const mod = await loadPuppeteer();
     const puppeteer = mod.default;
     if (browserInstance) { try { await browserInstance.close(); } catch { /* bỏ qua nếu đã đóng sẵn */ } }
+    cleanStaleBrowserProfileLocks();
     browserInstance = await puppeteer.launch({ headless: headless ? 'new' : false, args: ['--start-maximized'], userDataDir: AGENT_BROWSER_PROFILE_DIR, ...(getSystemBrowserExecutable() ? { executablePath: getSystemBrowserExecutable() } : {}) });
     // ⚠️ KHÔNG dùng pages()[0]: hồ sơ liên tục có thể khiến Chrome tự KHÔI PHỤC lại các tab đã mở ở lần
     // trước (session restore), nên pages()[0] có thể là 1 tab CŨ đã restore chứ không phải tab trống mới
