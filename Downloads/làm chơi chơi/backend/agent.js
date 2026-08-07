@@ -1944,12 +1944,39 @@ const AUTO_PROJECT_BASE_DIR = process.env.AUTO_PROJECT_DIR || path.join(os.homed
 // Đổi được qua .env: AGENT_BROWSER_PROFILE_DIR
 const AGENT_BROWSER_PROFILE_BASE_DIR = process.env.AGENT_BROWSER_PROFILE_DIR || path.join(AGENT_DIR, '.browser-profile');
 
-// 🌐 TÌM TRÌNH DUYỆT THẬT (Chrome/Edge đã cài trên máy) thay vì dùng Chromium "for Testing" mà package
-// puppeteer tự tải kèm - bản Chromium đó là bản KHÔNG chính chủ Google (thiếu codec/plugin/thành phần của
-// bản Chrome thật), nhiều trang có bot-detection mạnh như Facebook rất dễ fingerprint ra và chặn/bắt xác
-// minh liên tục. Dùng executablePath trỏ thẳng vào Chrome/Edge thật giúp trông giống trình duyệt bình
-// thường hơn hẳn, giảm hẳn khả năng bị chặn. Có thể ép đường dẫn cụ thể qua .env: AGENT_BROWSER_EXECUTABLE
-function findSystemBrowserExecutable() {
+// 🌐 TÌM TRÌNH DUYỆT THẬT ĐÃ CÀI TRÊN MÁY - ưu tiên Firefox trước Chrome/Edge: banner "Chrome đang được phần
+// mềm kiểm tra tự động kiểm soát" + navigator.webdriver=true là do CHÍNH giao thức CDP mà Puppeteer dùng để
+// điều khiển MỌI trình duyệt gốc Chromium (Chrome, Edge, Cốc Cốc, Brave, kể cả bản Chromium bundled đi kèm
+// puppeteer) - đổi qua lại giữa CÁC trình duyệt Chromium với nhau KHÔNG giải quyết được gì vì vẫn cùng
+// engine, vẫn dính cờ automation y hệt. Firefox dùng cơ chế điều khiển khác hẳn CDP nên KHÔNG dính banner/
+// navigator.webdriver kiểu đó - thực tế Facebook không chặn/bắt xác minh khi vào bằng Firefox. Vì vậy: có
+// Firefox cài sẵn thì DÙNG FIREFOX LÀM CHÍNH, Chrome/Edge thật chỉ còn là dự phòng nếu máy không có Firefox
+// hoặc Firefox lỗi. Ép đường dẫn cụ thể qua .env: AGENT_FIREFOX_EXECUTABLE (Firefox) / AGENT_BROWSER_EXECUTABLE (Chrome/Edge).
+function findSystemFirefoxExecutable() {
+  if (process.env.AGENT_FIREFOX_EXECUTABLE && fs.existsSync(process.env.AGENT_FIREFOX_EXECUTABLE)) {
+    return process.env.AGENT_FIREFOX_EXECUTABLE;
+  }
+  const candidates = process.platform === 'win32' ? [
+    path.join(process.env['PROGRAMFILES'] || 'C:\\Program Files', 'Mozilla Firefox\\firefox.exe'),
+    path.join(process.env['PROGRAMFILES(X86)'] || 'C:\\Program Files (x86)', 'Mozilla Firefox\\firefox.exe'),
+    path.join(process.env['LOCALAPPDATA'] || '', 'Mozilla Firefox\\firefox.exe')
+  ] : process.platform === 'darwin' ? [
+    '/Applications/Firefox.app/Contents/MacOS/firefox'
+  ] : [
+    '/usr/bin/firefox', '/usr/bin/firefox-esr'
+  ];
+  return candidates.find(p => p && fs.existsSync(p)) || null;
+}
+let cachedSystemFirefoxPath; // undefined = chưa tra lần nào, null = đã tra nhưng không thấy Firefox nào
+function getSystemFirefoxExecutable() {
+  if (cachedSystemFirefoxPath === undefined) {
+    cachedSystemFirefoxPath = findSystemFirefoxExecutable();
+    if (cachedSystemFirefoxPath) console.log(c.gray(`   🦊 [Browser] Dùng Firefox thật đã cài trên máy (ưu tiên #1, không dính automation-detection kiểu Chromium): ${cachedSystemFirefoxPath}`));
+  }
+  return cachedSystemFirefoxPath;
+}
+
+function findSystemChromeExecutable() {
   if (process.env.AGENT_BROWSER_EXECUTABLE && fs.existsSync(process.env.AGENT_BROWSER_EXECUTABLE)) {
     return process.env.AGENT_BROWSER_EXECUTABLE;
   }
@@ -1967,62 +1994,89 @@ function findSystemBrowserExecutable() {
   ];
   return candidates.find(p => p && fs.existsSync(p)) || null;
 }
-let cachedSystemBrowserPath; // undefined = chưa tra lần nào, null = đã tra nhưng không tìm thấy trình duyệt thật nào
-function getSystemBrowserExecutable() {
-  if (cachedSystemBrowserPath === undefined) {
-    cachedSystemBrowserPath = findSystemBrowserExecutable();
-    if (cachedSystemBrowserPath) {
-      console.log(c.gray(`   🌐 [Browser] Dùng trình duyệt thật đã cài trên máy: ${cachedSystemBrowserPath}`));
-    } else {
-      console.log(c.yellow(`   ⚠️ [Browser] Không tìm thấy Chrome/Edge cài sẵn trên máy - dùng tạm Chromium đi kèm puppeteer (dễ bị 1 số trang có bot-detection mạnh như Facebook chặn hơn). Cài Google Chrome hoặc set AGENT_BROWSER_EXECUTABLE trong .env trỏ tới file .exe trình duyệt để dùng bản thật.`));
-    }
+let cachedSystemChromePath; // undefined = chưa tra lần nào, null = đã tra nhưng không thấy
+function getSystemChromeExecutable() {
+  if (cachedSystemChromePath === undefined) {
+    cachedSystemChromePath = findSystemChromeExecutable();
+    if (cachedSystemChromePath) console.log(c.gray(`   🌐 [Browser] Có Chrome/Edge thật trên máy (dự phòng nếu Firefox không có/lỗi): ${cachedSystemChromePath}`));
   }
-  return cachedSystemBrowserPath;
+  return cachedSystemChromePath;
 }
 
-// 📁 Hồ sơ trình duyệt TÁCH RIÊNG theo từng LOẠI trình duyệt (Chrome/Edge thật vs Chromium bundled đi kèm
-// puppeteer) - KHÔNG được dùng chung 1 thư mục cho 2 loại: hồ sơ (Local State, os_crypt, Preferences...) do
-// 1 bản cụ thể tạo ra thường KHÔNG tương thích khi mở lại bằng 1 BẢN KHÁC hẳn (khác hãng/khác kiểu build) -
-// dễ khiến trình duyệt crash NGAY lúc khởi động (lỗi "Target closed" ngay sau launch, trước cả khi kịp mở
-// trang) dù bản thân trình duyệt/mạng không có vấn đề gì. Mỗi loại luôn dùng đúng thư mục do CHÍNH NÓ tạo
-// ra từ đầu -> tránh hẳn lỗi tương thích profile giữa các lần đổi loại trình duyệt.
-function getBrowserProfileDir() {
-  return getSystemBrowserExecutable() ? `${AGENT_BROWSER_PROFILE_BASE_DIR}-real` : `${AGENT_BROWSER_PROFILE_BASE_DIR}-bundled`;
+// 📁 Hồ sơ trình duyệt TÁCH RIÊNG theo từng LOẠI/ENGINE (firefox / chrome / bundled) - KHÔNG dùng chung 1
+// thư mục cho các loại khác nhau: định dạng hồ sơ giữa các engine/bản build khác nhau thường KHÔNG tương
+// thích, dễ khiến trình duyệt crash NGAY lúc khởi động dù bản thân không có vấn đề gì.
+function getBrowserProfileDir(kind) {
+  return `${AGENT_BROWSER_PROFILE_BASE_DIR}-${kind}`;
 }
 
-// 🔓 Dọn file KHOÁ (lock) còn sót lại trong hồ sơ trình duyệt liên tục trước mỗi lần mở - nguyên nhân RẤT
-// PHỔ BIẾN gây lỗi "Protocol error (Target.setAutoAttach): Target closed" ngay sau khi launch: Chrome tự
-// đặt file SingletonLock/SingletonCookie/SingletonSocket ngay trong userDataDir để chặn 2 tiến trình cùng
-// dùng chung 1 hồ sơ 1 lúc - nếu lần trước tiến trình cũ (crash, bị kill cứng, hoặc vừa đổi executablePath
-// giữa Chromium <-> Chrome thật khiến 2 bản coi nhau là "phiên khác") không tự dọn sạch file này khi thoát,
-// lần mở SAU sẽ bị Chrome thấy có khoá tưởng đang có phiên sống nên tự thoát ngay lập tức. Xoá thử các file
-// này trước mỗi lần launch (bỏ qua nếu không tồn tại hoặc đang thực sự bị khoá bởi 1 tiến trình sống khác).
+// 🔓 Dọn file KHOÁ (lock) Chromium còn sót lại trước mỗi lần mở (chỉ áp dụng cho engine Chromium - Chrome/
+// Edge thật/bundled; Firefox dùng cơ chế khoá khác nên không cần dọn tay) - nguyên nhân RẤT PHỔ BIẾN gây
+// lỗi "Protocol error (Target.setAutoAttach): Target closed" ngay sau khi launch.
 function cleanStaleBrowserProfileLocks(profileDir) {
   for (const f of ['SingletonLock', 'SingletonCookie', 'SingletonSocket']) {
     try { fs.unlinkSync(path.join(profileDir, f)); } catch { /* không tồn tại, hoặc đang bị khoá thật bởi tiến trình sống - bỏ qua, không phải lỗi nghiêm trọng */ }
   }
 }
 
-// 🚀 Launch trình duyệt CÓ HỒ SƠ LIÊN TỤC + TỰ FALLBACK: ưu tiên Chrome/Edge thật đã cài trên máy (giảm bị
-// site bot-detection mạnh như Facebook chặn), nhưng nếu launch bằng bản thật bị lỗi (vd hồ sơ cũ không
-// tương thích, bị phần mềm bảo mật chặn debug port...) thì TỰ ĐỘNG thử lại ngay bằng Chromium bundled đi
-// kèm puppeteer (luôn tương thích 100% vì cùng version với chính package puppeteer đang cài) thay vì bỏ
-// cuộc/rơi về open_app (mất khả năng đọc nội dung trang). Sau khi fallback 1 lần, nhớ luôn KHÔNG thử lại
-// bản thật nữa trong suốt phiên chạy này (đỡ lặp lại đúng lỗi cũ mỗi lần gọi, tốn thời gian vô ích).
+// 🚀 Launch trình duyệt CÓ HỒ SƠ LIÊN TỤC, tự đi qua NHIỀU TẦNG dự phòng theo thứ tự: Firefox thật (#1 -
+// không dính automation-detection kiểu Chromium, Facebook không chặn) -> Chrome/Edge thật (#2, dự phòng nếu
+// máy không có Firefox hoặc Firefox lỗi) -> Chromium bundled đi kèm puppeteer (#3, luôn tương thích 100% vì
+// cùng version với puppeteer đang cài, chỉ dùng khi 2 tầng trên đều không xong). Tự chuyển tầng nếu tầng
+// hiện tại lỗi, KHÔNG rơi thẳng về open_app như trước (mất khả năng đọc nội dung trang).
 async function launchProfiledBrowser(puppeteer, extraLaunchOpts) {
-  const systemPath = getSystemBrowserExecutable();
-  const profileDir = getBrowserProfileDir();
-  cleanStaleBrowserProfileLocks(profileDir);
-  try {
-    return await puppeteer.launch({ ...extraLaunchOpts, userDataDir: profileDir, ...(systemPath ? { executablePath: systemPath } : {}) });
-  } catch (err) {
-    if (!systemPath) throw err; // đã là bundled rồi mà vẫn lỗi -> không còn gì để fallback thêm, ném lỗi thật ra ngoài
-    console.log(c.yellow(`   ⚠️ [Browser] Mở bằng trình duyệt thật (${systemPath}) lỗi (${err.message}) - thử lại ngay bằng Chromium bundled...`));
-    cachedSystemBrowserPath = null; // coi như không có trình duyệt thật khả dụng cho các lần launch tiếp theo trong phiên chạy này
-    const fallbackDir = getBrowserProfileDir(); // giờ trả về thư mục "-bundled" vì cachedSystemBrowserPath đã null
-    cleanStaleBrowserProfileLocks(fallbackDir);
-    return await puppeteer.launch({ ...extraLaunchOpts, userDataDir: fallbackDir });
+  const { args: chromiumArgs, ...baseOpts } = extraLaunchOpts; // 'args' kiểu --start-maximized là cú pháp riêng Chromium, không dùng cho tầng Firefox
+  const chromiumTierOpts = (executablePath, kind) => ({
+    ...baseOpts,
+    args: [...(chromiumArgs || []), '--disable-blink-features=AutomationControlled'],
+    ignoreDefaultArgs: ['--enable-automation'],
+    userDataDir: getBrowserProfileDir(kind),
+    ...(executablePath ? { executablePath } : {})
+  });
+
+  const tiers = [];
+  const firefoxPath = getSystemFirefoxExecutable();
+  if (firefoxPath) {
+    tiers.push({ label: 'Firefox', opts: { ...baseOpts, product: 'firefox', executablePath: firefoxPath, userDataDir: getBrowserProfileDir('firefox') } });
   }
+  const chromePath = getSystemChromeExecutable();
+  if (chromePath) {
+    tiers.push({ label: 'Chrome/Edge thật', opts: chromiumTierOpts(chromePath, 'chrome') });
+  }
+  tiers.push({ label: 'Chromium bundled', opts: chromiumTierOpts(null, 'bundled') }); // luôn có sẵn tầng chót, không bao giờ rỗng danh sách
+
+  let lastErr;
+  for (let i = 0; i < tiers.length; i++) {
+    const { label, opts } = tiers[i];
+    if (opts.userDataDir && opts.product !== 'firefox') cleanStaleBrowserProfileLocks(opts.userDataDir);
+    try {
+      return await puppeteer.launch(opts);
+    } catch (err) {
+      lastErr = err;
+      if (i < tiers.length - 1) console.log(c.yellow(`   ⚠️ [Browser] Mở bằng ${label} lỗi (${err.message}) - thử tầng dự phòng kế tiếp...`));
+    }
+  }
+  throw lastErr;
+}
+
+// 🦊 Kiểm tra browser instance vừa launch có đúng là Firefox không (dựa vào file thực thi đã dùng để spawn
+// tiến trình) - dùng để tránh áp UA giả mạo Chrome lên 1 trình duyệt thật sự là Firefox (UA nói Chrome mà
+// hành vi/feature thật là Firefox lại chính là 1 dấu hiệu bất thường dễ bị fingerprint hơn, phản tác dụng).
+function isFirefoxBrowser(browser) {
+  try {
+    return /firefox/i.test(browser?.process?.()?.spawnfile || '');
+  } catch { return false; }
+}
+
+// 🥷 Ghi đè navigator.webdriver về undefined NGAY TRƯỚC khi bất kỳ script nào của trang chạy (đây là phần
+// dấu hiệu automation mà chỉ tắt cờ --enable-automation thôi CHƯA đủ xoá hết) - gọi ngay sau khi tạo page,
+// trước goto(). Không throw nếu lỗi vì đây chỉ là giảm khả năng bị phát hiện, không phải chức năng bắt buộc.
+async function applyStealthToPage(page) {
+  try {
+    await page.evaluateOnNewDocument(() => {
+      Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+    });
+  } catch { /* bỏ qua, không chặn luồng chính */ }
 }
 
 // Rút gọn 1 câu mục tiêu dài thành tên thư mục hợp lệ trên Windows: bỏ ký tự cấm (\/:*?"<>|), gộp
@@ -2720,7 +2774,13 @@ async function executeWebFetchPage(args) {
       tempBrowser = await launchProfiledBrowser(puppeteer, { headless: 'new' });
       page = await tempBrowser.newPage();
     }
-    await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36');
+    await applyStealthToPage(page);
+    // UA giả làm Chrome chỉ áp cho engine Chromium - nếu trình duyệt thật đang chạy là Firefox thì để UA
+    // gốc của Firefox (UA nói Chrome mà hành vi/feature thật là Firefox lại là 1 điểm bất thường dễ bị soi).
+    const activeBrowser = reuseSharedBrowser ? browserInstance : tempBrowser;
+    if (!isFirefoxBrowser(activeBrowser)) {
+      await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36');
+    }
     await page.goto(url, { waitUntil: 'networkidle2', timeout: 20000 });
     const title = await page.title();
     const text = await page.evaluate(() => document.body?.innerText || '');
@@ -3214,6 +3274,7 @@ async function executeBrowserOpen(args) {
     browserPage = await browserInstance.newPage();
     await browserPage.bringToFront();
     for (const p of staleTabs) { try { await p.close(); } catch { /* có thể đã đóng sẵn hoặc đang là tab cuối không đóng được */ } }
+    await applyStealthToPage(browserPage);
     browserConsoleLog = [];
     browserPage.on('console', msg => {
       const t = msg.type();
@@ -4722,6 +4783,7 @@ Nguyên tắc làm việc:
 - ĐẶC BIỆT KHI TỰ SỬA CHÍNH FILE agent.js (file đang chạy mày lúc này): đây là lỗi ĐÃ XẢY RA NHIỀU LẦN trong quá khứ - sơ ý làm mất dòng khai báo hàm (vd "async function tenHam(args) {") khi chèn/nối code mới, khiến phần thân hàm phía sau bị "mồ côi" ở top-level, gây lỗi "Illegal return statement" mà đọc code bằng mắt rất dễ bỏ sót. Sau MỌI lần ghi/sửa agent.js, BẮT BUỘC dùng run_command chạy ngay lệnh "node --input-type=module --check agent.js" (KHÔNG dùng "node --check"/"node -c" suông - lệnh đó có thể PASS NHẦM khi thiếu context "type: module" từ package.json trong thư mục chạy) để xác nhận cú pháp thật sự OK trước khi coi bước sửa file đó là xong.
 - KHỞI ĐỘNG SERVER/DỊCH VỤ NỀN (npm start, npm run dev, "node index.js", nodemon, vite...) qua run_command sẽ TỰ ĐỘNG chạy NỀN (không đợi thoát) - kết quả trả về sau vài giây kèm log khởi động đầu tiên, KHÔNG cần lo lệnh này "bị treo 60s" như trước, đó là hành vi ĐÚNG (server tiếp tục chạy nền sau khi tool trả kết quả, không phải bị lỗi). Muốn dừng 1 server đã tự khởi động, dùng tool stop_background_process(pid) - TUYỆT ĐỐI KHÔNG tự chế lệnh kiểu "netstat -aon | findstr :PORT" rồi "taskkill /f /pid" để dò và giết tiến trình theo cổng, lệnh dạng này LUÔN bị chặn tự động (rủi ro cao, không phân biệt được có đúng tiến trình của mình hay không).
 - CHỦ ĐỘNG TỰ TRA CỨU KHI BÍ - đừng đoán mò rồi báo sai, cũng đừng hỏi lại người dùng những thứ tự tra được: dùng search_web NGAY (không cần hỏi xin phép, tool này an toàn, không cần xác nhận) khi rơi vào các trường hợp: (1) gặp lỗi/thông báo lạ chưa chắc chắn nguyên nhân hoặc cách fix, (2) cần cú pháp/API/tên package chính xác mà không chắc chắn 100%, (3) thông tin có thể đã đổi khác so với kiến thức đã học (phiên bản mới, breaking changes, API bị deprecated), (4) đã thử 1-2 cách mà vẫn lỗi cùng 1 vấn đề - tra cứu NGAY thay vì đoán tiếp cách thứ 3 một cách mù quáng. Ưu tiên tra cứu bằng search_web TRƯỚC KHI kết luận "không làm được"/"chắc máy bạn thiếu gì đó"/"bạn tự tìm hiểu thêm nhé" hoặc trước khi dừng lại hỏi người dùng 1 câu mà bản thân có thể tự tìm câu trả lời trên mạng. Đọc kỹ kết quả tìm được, áp dụng thử ngay, không chỉ liệt kê nguồn rồi bỏ đó. NGOẠI LỆ: nếu search_web trả lỗi kiểu "chưa cấu hình TAVILY_API_KEY" (tức máy này chưa bật tính năng tìm kiếm), KHÔNG gọi lại search_web thêm lần nào nữa trong suốt phần còn lại của việc đang làm (sẽ luôn lỗi y hệt, gọi lại vô ích) - chỉ cần báo 1 lần ngắn gọn cho người dùng biết rồi tự làm tiếp bằng kiến thức sẵn có, thử nhiều cách khác nhau như bình thường.
+- ⚠️ ĐỪNG CHỈ ĐỢI "CẢM THẤY KHÔNG CHẮC" MỚI TRA CỨU - vấn đề của kiến thức lỗi thời là nhiều lúc TỰ TIN SAI mà không hề cảm thấy nghi ngờ gì (cú pháp/API cũ vẫn "nghe hợp lý" trong đầu dù thư viện đã đổi từ lâu). Với các package/SDK/framework hay đổi API liên tục (vd: @google/generative-ai và các SDK AI khác, các thư viện web frontend, cloud SDK, CLI tool của bên thứ 3, bất kỳ package nào có version cụ thể trong package.json), coi cú pháp nhớ được là CÓ KHẢ NĂNG lỗi thời NGAY CẢ KHI thấy tự tin - search_web nhanh 1 phát để xác nhận cú pháp/tên hàm hiện tại trước khi viết đoạn code quan trọng dùng thư viện đó, đặc biệt nếu đây là lần đầu đụng tới thư viện đó trong phiên làm việc này. KHÔNG cần làm vậy với cú pháp ngôn ngữ lõi ổn định (JS/Node core, HTML/CSS cơ bản, thuật toán thường) - chỉ áp dụng cho phần phụ thuộc vào 1 package/API cụ thể dễ đổi.
 - QUY TRÌNH TRA CỨU 2 TẦNG (search_web -> web_fetch_page), HOẶC dùng thẳng deep_research khi cần chắc chắn cao: search_web chỉ trả snippet ngắn (~300 ký tự/nguồn) đủ để có cái nhìn tổng quan và chọn ra URL nguồn tốt nhất, KHÔNG đủ chi tiết để trả lời chính xác các câu hỏi cần thông tin sâu (đoạn code mẫu đầy đủ, các bước hướng dẫn chi tiết, thông số kỹ thuật cụ thể...). Khi snippet không đủ để trả lời chắc chắn, hoặc người dùng đưa thẳng 1 link cụ thể, PHẢI gọi tiếp web_fetch_page trên URL nguồn tốt nhất (ưu tiên tài liệu chính thức, GitHub, StackOverflow, MDN... hơn blog/site quảng cáo không rõ nguồn) để đọc ĐẦY ĐỦ nội dung trang đó (mở bằng Chromium thật, đọc được cả trang JS render động) rồi mới trả lời - không dừng lại ở mức "theo kết quả tìm kiếm thì có vẻ là..." khi có thể đọc sâu để chắc chắn hơn. Với câu hỏi phức tạp/cần đối chiếu NHIỀU nguồn ngay từ đầu (thay vì chỉ 1 nguồn tốt nhất), gọi thẳng deep_research 1 lần thay vì lặp thủ công search_web rồi web_fetch_page nhiều vòng.
 - Dùng read_image khi người dùng đưa đường dẫn ảnh và cần biết CHỮ trong ảnh đó (screenshot lỗi, ảnh scan tài liệu, văn bản...) — đây là OCR thuần, không "hiểu" ảnh.
 - Dùng describe_image khi người dùng muốn biết ảnh CÓ GÌ (người, vật, phong cảnh, hành động, màu sắc, bố cục...) — dùng khả năng xem ảnh multimodal của Gemini, không phải OCR. Nếu không chắc người dùng cần loại nào, có thể gọi cả 2 rồi tổng hợp.
@@ -5235,7 +5297,7 @@ async function runAgentTurn(userInput) {
     const relevantFacts = await retrieveRelevantFacts(userInput);
     if (relevantFacts.length > 0) {
       const relevantBlock = relevantFacts.map(f => `- ${f}`).join('\n');
-      contextBlocks.push(`[Ghi nhớ liên quan tới yêu cầu này, từ các phiên trước]\n${relevantBlock}`);
+      contextBlocks.push(`[CÓ THỂ liên quan tới yêu cầu này, từ các phiên trước - đây là top ${relevantFacts.length} fact gần nhất theo độ khớp, KHÔNG có nghĩa là chắc chắn liên quan. CHỈ dùng fact nào thực sự khớp với câu hỏi hiện tại, BỎ QUA HOÀN TOÀN (không nhắc tới, không cố gán ghép) những fact rõ ràng không ăn nhập gì]\n${relevantBlock}`);
     }
   } catch (err) {
     console.log(c.gray(`   ⚠️ Lỗi truy xuất bộ nhớ liên quan (bỏ qua, không ảnh hưởng lượt chat): ${err.message?.slice(0, 80) || err}`));
