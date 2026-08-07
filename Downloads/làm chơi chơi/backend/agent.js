@@ -1942,7 +1942,7 @@ const AUTO_PROJECT_BASE_DIR = process.env.AUTO_PROJECT_DIR || path.join(os.homed
 // phải đăng nhập lại. Agent KHÔNG tự động điền/gửi mật khẩu hộ người dùng trong bất kỳ trường hợp nào -
 // việc đăng nhập ban đầu luôn do người dùng tự làm thủ công trong cửa sổ trình duyệt thật hiện ra.
 // Đổi được qua .env: AGENT_BROWSER_PROFILE_DIR
-const AGENT_BROWSER_PROFILE_DIR = process.env.AGENT_BROWSER_PROFILE_DIR || path.join(AGENT_DIR, '.browser-profile');
+const AGENT_BROWSER_PROFILE_BASE_DIR = process.env.AGENT_BROWSER_PROFILE_DIR || path.join(AGENT_DIR, '.browser-profile');
 
 // 🌐 TÌM TRÌNH DUYỆT THẬT (Chrome/Edge đã cài trên máy) thay vì dùng Chromium "for Testing" mà package
 // puppeteer tự tải kèm - bản Chromium đó là bản KHÔNG chính chủ Google (thiếu codec/plugin/thành phần của
@@ -1980,6 +1980,16 @@ function getSystemBrowserExecutable() {
   return cachedSystemBrowserPath;
 }
 
+// 📁 Hồ sơ trình duyệt TÁCH RIÊNG theo từng LOẠI trình duyệt (Chrome/Edge thật vs Chromium bundled đi kèm
+// puppeteer) - KHÔNG được dùng chung 1 thư mục cho 2 loại: hồ sơ (Local State, os_crypt, Preferences...) do
+// 1 bản cụ thể tạo ra thường KHÔNG tương thích khi mở lại bằng 1 BẢN KHÁC hẳn (khác hãng/khác kiểu build) -
+// dễ khiến trình duyệt crash NGAY lúc khởi động (lỗi "Target closed" ngay sau launch, trước cả khi kịp mở
+// trang) dù bản thân trình duyệt/mạng không có vấn đề gì. Mỗi loại luôn dùng đúng thư mục do CHÍNH NÓ tạo
+// ra từ đầu -> tránh hẳn lỗi tương thích profile giữa các lần đổi loại trình duyệt.
+function getBrowserProfileDir() {
+  return getSystemBrowserExecutable() ? `${AGENT_BROWSER_PROFILE_BASE_DIR}-real` : `${AGENT_BROWSER_PROFILE_BASE_DIR}-bundled`;
+}
+
 // 🔓 Dọn file KHOÁ (lock) còn sót lại trong hồ sơ trình duyệt liên tục trước mỗi lần mở - nguyên nhân RẤT
 // PHỔ BIẾN gây lỗi "Protocol error (Target.setAutoAttach): Target closed" ngay sau khi launch: Chrome tự
 // đặt file SingletonLock/SingletonCookie/SingletonSocket ngay trong userDataDir để chặn 2 tiến trình cùng
@@ -1987,9 +1997,31 @@ function getSystemBrowserExecutable() {
 // giữa Chromium <-> Chrome thật khiến 2 bản coi nhau là "phiên khác") không tự dọn sạch file này khi thoát,
 // lần mở SAU sẽ bị Chrome thấy có khoá tưởng đang có phiên sống nên tự thoát ngay lập tức. Xoá thử các file
 // này trước mỗi lần launch (bỏ qua nếu không tồn tại hoặc đang thực sự bị khoá bởi 1 tiến trình sống khác).
-function cleanStaleBrowserProfileLocks() {
+function cleanStaleBrowserProfileLocks(profileDir) {
   for (const f of ['SingletonLock', 'SingletonCookie', 'SingletonSocket']) {
-    try { fs.unlinkSync(path.join(AGENT_BROWSER_PROFILE_DIR, f)); } catch { /* không tồn tại, hoặc đang bị khoá thật bởi tiến trình sống - bỏ qua, không phải lỗi nghiêm trọng */ }
+    try { fs.unlinkSync(path.join(profileDir, f)); } catch { /* không tồn tại, hoặc đang bị khoá thật bởi tiến trình sống - bỏ qua, không phải lỗi nghiêm trọng */ }
+  }
+}
+
+// 🚀 Launch trình duyệt CÓ HỒ SƠ LIÊN TỤC + TỰ FALLBACK: ưu tiên Chrome/Edge thật đã cài trên máy (giảm bị
+// site bot-detection mạnh như Facebook chặn), nhưng nếu launch bằng bản thật bị lỗi (vd hồ sơ cũ không
+// tương thích, bị phần mềm bảo mật chặn debug port...) thì TỰ ĐỘNG thử lại ngay bằng Chromium bundled đi
+// kèm puppeteer (luôn tương thích 100% vì cùng version với chính package puppeteer đang cài) thay vì bỏ
+// cuộc/rơi về open_app (mất khả năng đọc nội dung trang). Sau khi fallback 1 lần, nhớ luôn KHÔNG thử lại
+// bản thật nữa trong suốt phiên chạy này (đỡ lặp lại đúng lỗi cũ mỗi lần gọi, tốn thời gian vô ích).
+async function launchProfiledBrowser(puppeteer, extraLaunchOpts) {
+  const systemPath = getSystemBrowserExecutable();
+  const profileDir = getBrowserProfileDir();
+  cleanStaleBrowserProfileLocks(profileDir);
+  try {
+    return await puppeteer.launch({ ...extraLaunchOpts, userDataDir: profileDir, ...(systemPath ? { executablePath: systemPath } : {}) });
+  } catch (err) {
+    if (!systemPath) throw err; // đã là bundled rồi mà vẫn lỗi -> không còn gì để fallback thêm, ném lỗi thật ra ngoài
+    console.log(c.yellow(`   ⚠️ [Browser] Mở bằng trình duyệt thật (${systemPath}) lỗi (${err.message}) - thử lại ngay bằng Chromium bundled...`));
+    cachedSystemBrowserPath = null; // coi như không có trình duyệt thật khả dụng cho các lần launch tiếp theo trong phiên chạy này
+    const fallbackDir = getBrowserProfileDir(); // giờ trả về thư mục "-bundled" vì cachedSystemBrowserPath đã null
+    cleanStaleBrowserProfileLocks(fallbackDir);
+    return await puppeteer.launch({ ...extraLaunchOpts, userDataDir: fallbackDir });
   }
 }
 
@@ -2667,7 +2699,7 @@ async function executeHttpRequest(args) {
   }
 }
 
-// 📄 Đọc nội dung 1 trang, dùng CHUNG hồ sơ đăng nhập liên tục (AGENT_BROWSER_PROFILE_DIR) với browser_open:
+// 📄 Đọc nội dung 1 trang, dùng CHUNG hồ sơ đăng nhập liên tục (getBrowserProfileDir()) với browser_open:
 // - Nếu browserInstance (từ browser_open) đang mở sẵn -> mở thêm 1 tab MỚI trong CHÍNH browser đó (tránh
 //   xung đột "profile đang bị khoá bởi tiến trình khác" khi 2 Puppeteer cùng trỏ 1 userDataDir cùng lúc),
 //   và tận dụng luôn phiên đăng nhập đang có trong cửa sổ đó (vd đang đăng nhập Facebook sẵn).
@@ -2685,8 +2717,7 @@ async function executeWebFetchPage(args) {
     } else {
       const mod = await loadPuppeteer();
       const puppeteer = mod.default;
-      cleanStaleBrowserProfileLocks();
-      tempBrowser = await puppeteer.launch({ headless: 'new', userDataDir: AGENT_BROWSER_PROFILE_DIR, ...(getSystemBrowserExecutable() ? { executablePath: getSystemBrowserExecutable() } : {}) });
+      tempBrowser = await launchProfiledBrowser(puppeteer, { headless: 'new' });
       page = await tempBrowser.newPage();
     }
     await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36');
@@ -3172,8 +3203,7 @@ async function executeBrowserOpen(args) {
     const mod = await loadPuppeteer();
     const puppeteer = mod.default;
     if (browserInstance) { try { await browserInstance.close(); } catch { /* bỏ qua nếu đã đóng sẵn */ } }
-    cleanStaleBrowserProfileLocks();
-    browserInstance = await puppeteer.launch({ headless: headless ? 'new' : false, args: ['--start-maximized'], userDataDir: AGENT_BROWSER_PROFILE_DIR, ...(getSystemBrowserExecutable() ? { executablePath: getSystemBrowserExecutable() } : {}) });
+    browserInstance = await launchProfiledBrowser(puppeteer, { headless: headless ? 'new' : false, args: ['--start-maximized'] });
     // ⚠️ KHÔNG dùng pages()[0]: hồ sơ liên tục có thể khiến Chrome tự KHÔI PHỤC lại các tab đã mở ở lần
     // trước (session restore), nên pages()[0] có thể là 1 tab CŨ đã restore chứ không phải tab trống mới
     // -> nếu điều hướng nhầm tab đó, tab đang hiện trên màn hình (active) lại là tab KHÁC, gây lệch giữa
@@ -4700,7 +4730,7 @@ Nguyên tắc làm việc:
 - TỰ DỌN RÁC, đừng để người dùng phải dọn thay bạn: nếu trong lúc làm việc bạn tạo ra file thử-sai rồi bỏ (thử cách A không được, chuyển sang cách B), file trùng lặp, file tạm/không còn cần dùng nữa -> chủ động dùng delete_file để xoá nó đi TRƯỚC KHI báo hoàn thành, không để lại rác trong thư mục dự án. Không hỏi xin phép người dùng trước mỗi lần dọn loại rác do chính bạn tạo ra - cứ dọn rồi báo lại ngắn gọn đã xoá gì (đã có backup tự động nên an toàn để khôi phục nếu cần).
 - HẠN CHẾ HỎI LẠI NGƯỜI DÙNG NHỮNG CÂU VỤN VẶT: nếu có thể tự suy luận ra 1 phương án hợp lý (dựa vào ngữ cảnh, quy ước phổ biến, hoặc đơn giản là thử 1 cách rồi xem kết quả), CỨ LÀM LUÔN thay vì dừng lại hỏi xin xác nhận thêm chi tiết. Chỉ thực sự hỏi lại khi thông tin thiếu là THỰC SỰ QUAN TRỌNG và không có cách nào đoán hợp lý được (vd: yêu cầu quá mơ hồ tới mức làm sai hướng hoàn toàn, hoặc liên quan tới hành động phá huỷ dữ liệu không thể hoàn tác). Người dùng ghét bị hỏi nhiều câu lặt vặt.
 - Dùng open_app để mở app/file/website theo yêu cầu người dùng. QUAN TRỌNG - KHÔNG ĐOÁN URL CỦA 1 THỰC THỂ CỤ THỂ: khi người dùng yêu cầu mở kênh/trang/hồ sơ của 1 người/tổ chức/thương hiệu cụ thể (vd "mở kênh YouTube của X", "vào trang Facebook của Y") mà không đưa sẵn link, TUYỆT ĐỐI không tự bịa URL/handle theo trí nhớ (kiểu đoán "@TenOfficial", "@TenChannel") rồi gọi open_app thẳng — trí nhớ có thể sai hoặc lỗi thời, dễ ra trang lỗi/404 hoặc nhầm sang kênh/trang của người khác. Thay vào đó: (1) search_web trước với từ khoá tên thực thể + nền tảng (vd "kênh YouTube chính thức [tên]") để tìm URL chính xác từ kết quả tìm kiếm thật, (2) chỉ open_app với URL đã xác nhận từ kết quả search_web. Chỉ được mở thẳng bằng open_app không cần search_web khi: đó là trang chủ 1 domain phổ biến không có "chủ thể" mơ hồ (vd "mở youtube.com", "mở google.com"), hoặc người dùng đã tự đưa sẵn URL/link cụ thể trong tin nhắn.
-- ⚠️ PHÂN BIỆT "MỞ ĐỂ NGƯỜI DÙNG TỰ XEM" VÀ "MỞ ĐỂ MÀY TỰ ĐỌC/PHÂN TÍCH NỘI DUNG" - đây là lỗi rất hay gặp: open_app chỉ bật app/trình duyệt lên MÀN HÌNH người dùng, MÀY KHÔNG ĐỌC ĐƯỢC BẤT KỲ CHỮ NÀO trên đó (không có quyền truy cập nội dung trang qua open_app). Nếu người dùng chỉ nói kiểu "mở Facebook/trang X lên" chung chung, không kèm ý cần biết nội dung gì -> open_app là đủ, họ tự xem lấy. NHƯNG nếu ý người dùng là cần MÀY đọc/phân tích/tóm tắt/tìm thông tin/trả lời câu hỏi DỰA THEO nội dung trang đó (vd "xem giúp tao có tin gì mới", "đọc bài này tóm tắt lại", "coi tài khoản X đăng gì gần đây", "phân tích trang này giúp tao", hoặc bất kỳ câu nào ngụ ý mày cần "biết" trang đó có gì) -> TUYỆT ĐỐI không dùng open_app, PHẢI dùng browser_open (rồi đọc nội dung qua browser_eval lấy document.body.innerText, hoặc web_fetch_page) vì chỉ 2 tool này mới cho mày thực sự đọc được trang. Với các trang cần đăng nhập (Facebook, Gmail, Instagram...): browser_open dùng HỒ SƠ LIÊN TỤC (AGENT_BROWSER_PROFILE_DIR) đã lưu sẵn đăng nhập cũ - cứ mở thẳng URL trước, nếu trang load ra nội dung bình thường (không phải form đăng nhập) nghĩa là ĐÃ ĐĂNG NHẬP SẴN, đọc/phân tích luôn không cần hỏi lại người dùng. CHỈ khi trang rõ ràng đang ở màn hình đăng nhập/redirect qua trang login (title hoặc nội dung text trả về chứa các dấu hiệu như ô nhập mật khẩu, nút "Đăng nhập"/"Log in", chưa thấy nội dung feed/trang cá nhân thật) thì mới báo ngắn gọn cho người dùng biết cần TỰ đăng nhập tay 1 lần trong cửa sổ vừa mở (browser_open luôn dùng headless:false cho trường hợp này để người dùng thấy cửa sổ), rồi đợi người dùng xác nhận đã đăng nhập xong mới đọc tiếp - TUYỆT ĐỐI không tự đoán/tự nhập giúp tài khoản, mật khẩu của người dùng.
+- ⚠️ PHÂN BIỆT "MỞ ĐỂ NGƯỜI DÙNG TỰ XEM" VÀ "MỞ ĐỂ MÀY TỰ ĐỌC/PHÂN TÍCH NỘI DUNG" - đây là lỗi rất hay gặp: open_app chỉ bật app/trình duyệt lên MÀN HÌNH người dùng, MÀY KHÔNG ĐỌC ĐƯỢC BẤT KỲ CHỮ NÀO trên đó (không có quyền truy cập nội dung trang qua open_app). Nếu người dùng chỉ nói kiểu "mở Facebook/trang X lên" chung chung, không kèm ý cần biết nội dung gì -> open_app là đủ, họ tự xem lấy. NHƯNG nếu ý người dùng là cần MÀY đọc/phân tích/tóm tắt/tìm thông tin/trả lời câu hỏi DỰA THEO nội dung trang đó (vd "xem giúp tao có tin gì mới", "đọc bài này tóm tắt lại", "coi tài khoản X đăng gì gần đây", "phân tích trang này giúp tao", hoặc bất kỳ câu nào ngụ ý mày cần "biết" trang đó có gì) -> TUYỆT ĐỐI không dùng open_app, PHẢI dùng browser_open (rồi đọc nội dung qua browser_eval lấy document.body.innerText, hoặc web_fetch_page) vì chỉ 2 tool này mới cho mày thực sự đọc được trang. Với các trang cần đăng nhập (Facebook, Gmail, Instagram...): browser_open dùng HỒ SƠ LIÊN TỤC đã lưu sẵn đăng nhập cũ (tự chọn trình duyệt thật hoặc bundled, tự fallback nếu 1 bên lỗi) - cứ mở thẳng URL trước, nếu trang load ra nội dung bình thường (không phải form đăng nhập) nghĩa là ĐÃ ĐĂNG NHẬP SẴN, đọc/phân tích luôn không cần hỏi lại người dùng. CHỈ khi trang rõ ràng đang ở màn hình đăng nhập/redirect qua trang login (title hoặc nội dung text trả về chứa các dấu hiệu như ô nhập mật khẩu, nút "Đăng nhập"/"Log in", chưa thấy nội dung feed/trang cá nhân thật) thì mới báo ngắn gọn cho người dùng biết cần TỰ đăng nhập tay 1 lần trong cửa sổ vừa mở (browser_open luôn dùng headless:false cho trường hợp này để người dùng thấy cửa sổ), rồi đợi người dùng xác nhận đã đăng nhập xong mới đọc tiếp - TUYỆT ĐỐI không tự đoán/tự nhập giúp tài khoản, mật khẩu của người dùng.
 - ƯU TIÊN DÙNG list_directory thay cho "ls"/"dir" qua run_command khi chỉ cần xem 1 thư mục có gì — nhanh hơn (không hỏi xác nhận), không lo sai lệnh hệ điều hành, trả về kết quả có cấu trúc (kích thước, loại, ngày sửa) thay vì text thô phải tự parse.
 - Dùng create_directory thay cho "mkdir -p" qua run_command — tự tạo cả thư mục cha, không lo cú pháp khác nhau giữa Windows/Unix, nhanh hơn.
 - Dùng search_in_files thay cho "grep"/"findstr"/"rg" qua run_command khi cần tìm 1 hàm/biến/tên class xuất hiện ở đâu trong dự án — tự động bỏ qua node_modules/.git/dist, hỗ trợ regex, giới hạn kết quả để không tốn token. Rất hữu ích khi: cần tìm tất cả file import 1 module, tìm 1 hàm đang được gọi ở đâu, tìm 1 chuỗi lỗi xuất hiện trong code...
