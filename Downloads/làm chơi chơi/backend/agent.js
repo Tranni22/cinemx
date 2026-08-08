@@ -4861,10 +4861,22 @@ CẤM "NHỚ LẠI" DỮ LIỆU CHÍNH XÁC TỪ TRÍ NHỚ - đây là nguồn 
 4. Khi sửa/mở rộng 1 bảng dữ liệu có sẵn (thêm dòng vào bảng điểm, thêm entry vào danh sách hằng số...) - chỉ THÊM đúng phần mới, giữ nguyên 100% phần cũ đã đọc được, không viết lại toàn bộ bảng từ trí nhớ dù chỉ thêm 1 dòng.
 `;
 
+// ⏰ Neo mốc thời gian THẬT vào system prompt - nếu không có dòng này, model hoàn toàn không có cơ sở nào
+// để tự nghi ngờ "kiến thức mình có thể đã cũ hơn hiện tại rồi", vì nó không biết bây giờ là ngày nào so
+// với mốc kiến thức được train. Tính lại mỗi lần agent khởi động (đủ chính xác cho 1 phiên chạy dài ngày).
+const CURRENT_DATE_INFO = new Date().toLocaleDateString('vi-VN', { weekday: 'long', year: 'numeric', month: '2-digit', day: '2-digit' });
+const TIME_AWARENESS_RULES = `
+⏰ NHẬN THỨC THỜI GIAN - GIẢM BỊA DO KIẾN THỨC LỖI THỜI:
+Hôm nay là ${CURRENT_DATE_INFO}. Kiến thức có sẵn trong đầu (không qua tool) có 1 mốc "cắt" (training cutoff) nằm ở QUÁ KHỨ so với hôm nay - có thể vài tháng, có thể hơn 1 năm, và bản thân KHÔNG biết chính xác mốc đó là bao giờ, nên "cảm thấy chắc chắn" không phải là bằng chứng đáng tin cho việc thông tin còn đúng tới hôm nay.
+1. Với bất kỳ câu hỏi/thao tác nào phụ thuộc vào TRẠNG THÁI HIỆN TẠI của thế giới (phiên bản mới nhất của 1 phần mềm/thư viện/model AI, giá cả, tỷ giá, tin tức, "ai đang là...", "hiện tại...", "mới nhất...", tính năng/API vừa ra mắt gần đây, 1 công ty/sản phẩm/dịch vụ còn tồn tại hay đã đổi tên/ngừng hoạt động...) - PHẢI search_web để xác nhận trước khi trả lời, KHÔNG trả lời thẳng từ trí nhớ dù cảm thấy chắc chắn.
+2. Nếu search_web trả về thông tin MỚI HƠN và MÂU THUẪN với những gì nhớ được trong đầu - LUÔN tin kết quả search (cụ thể, có ngày tháng, tra được tận nguồn) hơn trí nhớ (mơ hồ, không gắn mốc thời gian, dễ lỗi thời), và nói rõ cho người dùng biết đã cập nhật theo thông tin mới hơn.
+3. Kiến thức KHÔNG đổi theo thời gian (khái niệm toán học, thuật toán/cấu trúc dữ liệu cơ bản, cú pháp ngôn ngữ lập trình lõi đã ổn định từ lâu, sự kiện lịch sử đã xong xuôi...) thì cứ trả lời thẳng bình thường như mọi khi, không cần search cho MỌI THỨ - chỉ áp dụng cho phần thực sự có khả năng đã đổi khác so với hôm nay.
+`;
+
 const memoryContextAtStartup = buildMemoryContext();
 const SYSTEM_INSTRUCTION = memoryContextAtStartup
-  ? `${baseSystemInstruction}${DEPTH_OF_UNDERSTANDING_RULES}${DATA_FIDELITY_RULES}\n📌 BỘ NHỚ NHẸ (nạp từ phiên trước, có thể đã cũ, chỉ tham khảo):\n${memoryContextAtStartup}\n`
-  : `${baseSystemInstruction}${DEPTH_OF_UNDERSTANDING_RULES}${DATA_FIDELITY_RULES}`;
+  ? `${baseSystemInstruction}${DEPTH_OF_UNDERSTANDING_RULES}${DATA_FIDELITY_RULES}${TIME_AWARENESS_RULES}\n📌 BỘ NHỚ NHẸ (nạp từ phiên trước, có thể đã cũ, chỉ tham khảo):\n${memoryContextAtStartup}\n`
+  : `${baseSystemInstruction}${DEPTH_OF_UNDERSTANDING_RULES}${DATA_FIDELITY_RULES}${TIME_AWARENESS_RULES}`;
 
 // 📊 In số token đã dùng mỗi lượt gọi API, giống cách server.js log timing
 function logUsageMeta(response) {
