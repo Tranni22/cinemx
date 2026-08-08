@@ -2887,7 +2887,7 @@ async function executeDescribeImage(args) {
       : 'Mô tả chi tiết bức ảnh này: có người/vật gì, đang làm gì, bối cảnh/khung cảnh ra sao, màu sắc nổi bật, bố cục tổng thể. Trả lời bằng tiếng Việt.');
 
     const visionResult = await generateContentWithRetry({
-      model: MODEL_NAME,
+      model: geminiModelName(),
       contents: [
         { inlineData: { mimeType, data: imageBase64 } },
         { text: prompt }
@@ -4889,28 +4889,37 @@ function logUsageMeta(response) {
   }
 }
 
-// 🧠 Model: quay về gemini-3-flash-preview (rẻ, nhanh, ít 503 hơn hẳn 3.5-flash) + thinking HIGH để bù chất lượng.
+// 🧠 Model CHÍNH (tầng #1 trong chuỗi dự phòng) - bản mới nhất, ưu tiên thử trước + thinking HIGH để bù chất lượng.
 // Đổi được qua .env nếu sau này muốn thử lại model khác: GEMINI_MODEL=gemini-3.5-flash
-let MODEL_NAME = process.env.GEMINI_MODEL || 'gemini-3-flash-preview';
+let MODEL_NAME = process.env.GEMINI_MODEL || 'gemini-3.6-flash';
 
-// 🪂 Model DỰ PHÒNG: khi TẤT CẢ key đã xoay hết vòng mà vẫn dính lỗi quota/rate-limit trên MODEL_NAME
-// (chứ không phải lỗi 503 quá tải tạm thời), tự động chuyển sang model này rồi thử lại từ key đầu tiên,
-// vì model 2.5-flash thường có hạn ngạch free tier rộng hơn hẳn các model 3.x mới ra.
-// Đổi được qua .env: GEMINI_FALLBACK_MODEL=gemini-2.0-flash (hoặc model khác tuỳ ý)
-// Đổi được qua .env: GEMINI_FALLBACK_MODEL=gemini-3.1-flash-lite (rẻ hơn nhưng yếu, dễ phá code — không khuyến khích cho agent coding)
-// gemini-3.5-flash: model coding/agentic mạnh nhất hiện tại của Google, GA ổn định, đắt hơn nhưng đáng tin cậy hơn cho việc sửa/viết code.
-// Lưu ý: gemini-2.5-flash / gemini-2.0-flash đã bị Google khai tử (404 "no longer available") tính đến 07/2026, KHÔNG dùng làm fallback.
-let FALLBACK_MODEL_NAME = process.env.GEMINI_FALLBACK_MODEL || 'gemini-3.5-flash';
-let currentModelName = MODEL_NAME; // model HIỂN THỊ cho lệnh /model (đang dùng làm CHÍNH)
-let usingFallbackModel = false;
+// 🪂 CHUỖI MODEL DỰ PHÒNG THEO THỨ TỰ THẬT, KHÔNG PHẢI KIỂU "2 Ô HOÁN ĐỔI" CŨ: bản cũ chỉ nhớ ĐÚNG 1 model
+// dự phòng duy nhất = model chính NGAY TRƯỚC lần bấm /model gần nhất - nên đổi qua đổi lại vài lần (vd
+// 3.5-lite -> 3.6) là dự phòng thành BẤT KỲ model nào chứ không theo 1 thứ tự ưu tiên cố định (đây chính là
+// lý do "sao dự phòng lại nhảy xuống 3.5-lite thay vì 3.5" - không phải bug, chỉ là cơ chế cũ vốn không có
+// khái niệm "thứ tự"). Giờ có 1 danh sách CỐ ĐỊNH: hết quota tầng nào (trên TẤT CẢ key) thì luôn rớt xuống
+// ĐÚNG tầng kế tiếp trong danh sách này, không phụ thuộc lịch sử /model trước đó.
+// gemini-3.6-flash: bản mới nhất -> đứng đầu chuỗi, ưu tiên thử trước tiên.
+// gemini-3.5-flash: model coding/agentic mạnh, GA ổn định, đáng tin cậy - tầng dự phòng #2 nếu 3.6 hết quota.
+// gemini-3.5-flash-lite: rẻ hơn nhưng yếu, dễ phá code - xếp CUỐI chuỗi, chỉ dùng khi mọi tầng trên đều hết quota.
+// Lưu ý: gemini-2.5-flash / gemini-2.0-flash / gemini-3-flash-preview đã bị Google khai tử hoặc thay thế bởi bản GA mới hơn, KHÔNG dùng.
+// Đổi/sắp lại thứ tự tuỳ ý qua .env: GEMINI_MODEL_CHAIN=model1,model2,model3 (phân cách bằng dấu phẩy, THỨ TỰ trong chuỗi = thứ tự ưu tiên thật).
+const MODEL_FALLBACK_CHAIN = (process.env.GEMINI_MODEL_CHAIN || [
+  MODEL_NAME,
+  process.env.GEMINI_FALLBACK_MODEL || 'gemini-3.5-flash',
+  'gemini-3.5-flash-lite'
+].join(',')).split(',').map(s => s.trim()).filter(Boolean)
+  .filter((m, i, arr) => arr.indexOf(m) === i); // khử trùng lặp nếu MODEL_NAME trùng 1 tầng khác trong danh sách
 
-// 📎 Model bổ sung: chỉ để HIỆN thêm trong danh sách lệnh /model cho đủ bộ chọn nhanh,
-// KHÔNG thay đổi model chính/dự phòng đang chạy mặc định. Muốn thêm model khác vào đây thì
-// cứ nối thêm string vào mảng, không ảnh hưởng gì tới MODEL_NAME/FALLBACK_MODEL_NAME.
+let modelChainIndex = 0; // vị trí hiện tại trong MODEL_FALLBACK_CHAIN - 0 = đang ở tầng ưu tiên cao nhất
+let currentModelName = MODEL_FALLBACK_CHAIN[0]; // model HIỂN THỊ cho lệnh /model (đang dùng làm CHÍNH)
+
+// 📎 Model bổ sung: chỉ để HIỆN thêm trong danh sách lệnh /model cho đủ bộ chọn nhanh nếu chưa có sẵn
+// trong MODEL_FALLBACK_CHAIN, KHÔNG thay đổi chuỗi dự phòng đang chạy mặc định.
 const EXTRA_MODEL_CHOICES = ['gemini-3.5-flash', 'gemini-3.5-flash-lite', 'gemini-3.6-flash'];
 
 function geminiModelName() {
-  return usingFallbackModel ? FALLBACK_MODEL_NAME : MODEL_NAME;
+  return MODEL_FALLBACK_CHAIN[modelChainIndex];
 }
 
 const CHAT_CONFIG = {
@@ -4935,32 +4944,49 @@ function rotateGeminiKey() {
   return true;
 }
 
-// 🎛️ Đổi THỦ CÔNG model nào đang ưu tiên chạy TRƯỚC (qua lệnh /model) - model được chọn trở thành model
-// CHÍNH (MODEL_NAME), model còn lại tự động lùi thành dự phòng (FALLBACK_MODEL_NAME). KHÔNG ảnh hưởng gì
-// nếu không gõ lệnh /model - hành vi mặc định vẫn y hệt cũ (gemini-3-flash-preview trước, 3.5-flash dự phòng).
+// 🎛️ Đổi THỦ CÔNG model nào đang ưu tiên chạy TRƯỚC (qua lệnh /model) - nếu tên model đã có sẵn trong
+// MODEL_FALLBACK_CHAIN thì nhảy thẳng tới đúng vị trí đó (các tầng phía trước trong chuỗi bị bỏ qua cho lần
+// chạy này, chuỗi dự phòng phía SAU vẫn giữ nguyên thứ tự cũ); nếu là model LẠ chưa có trong chuỗi thì chèn
+// nó lên làm tầng #1 mới, đẩy toàn bộ chuỗi cũ lùi lại phía sau làm dự phòng - không mất tầng nào.
 function switchToModel(newModelName) {
   if (newModelName === currentModelName) return false;
-  const oldPrimary = MODEL_NAME;
-  MODEL_NAME = newModelName;               // model được chọn -> lên làm chính
-  FALLBACK_MODEL_NAME = oldPrimary;        // model cũ -> lùi làm dự phòng
-  currentModelName = newModelName;
-  usingFallbackModel = false;              // reset cờ - để switchToFallbackModel() vẫn hoạt động đúng nếu model mới này SAU NÀY cũng hết quota
+  const existingIdx = MODEL_FALLBACK_CHAIN.indexOf(newModelName);
+  if (existingIdx === -1) {
+    MODEL_FALLBACK_CHAIN.unshift(newModelName);
+    modelChainIndex = 0;
+  } else {
+    modelChainIndex = existingIdx;
+  }
+  currentModelName = geminiModelName();
   const preservedHistory = chat.getHistory();
   chat = ai.chats.create({ model: geminiModelName(), config: CHAT_CONFIG, history: preservedHistory });
   return true;
 }
 
-// 🪂 Chuyển hẳn sang model dự phòng (chỉ 1 lần duy nhất mỗi phiên) khi model chính đã hết quota trên TẤT
-// CẢ key. Giữ nguyên lịch sử hội thoại. Trả về false nếu đã dùng fallback rồi (tránh chuyển lặp vô ích).
-function switchToFallbackModel() {
-  if (usingFallbackModel) return false;
-  usingFallbackModel = true;
-  currentModelName = FALLBACK_MODEL_NAME;
+// 🪂 Chuyển sang TẦNG DỰ PHÒNG KẾ TIẾP trong MODEL_FALLBACK_CHAIN khi tầng hiện tại đã hết quota trên TẤT
+// CẢ key. Giữ nguyên lịch sử hội thoại. Trả về false nếu đã ở tầng CUỐI (hết chuỗi, không còn gì để rớt
+// xuống nữa nên chịu thua thật, ném lỗi ra ngoài như trước).
+function advanceModelChain() {
+  if (modelChainIndex >= MODEL_FALLBACK_CHAIN.length - 1) return false;
+  const oldModel = geminiModelName();
+  modelChainIndex++;
+  currentModelName = geminiModelName();
   const preservedHistory = chat.getHistory();
   ai = new GoogleGenAI({ apiKey: currentGeminiKey() });
   chat = ai.chats.create({ model: geminiModelName(), config: CHAT_CONFIG, history: preservedHistory });
-  console.log(c.yellow(`   🪂 Model "${MODEL_NAME}" đã hết quota trên TẤT CẢ ${GEMINI_KEYS.length} key — chuyển sang model dự phòng "${FALLBACK_MODEL_NAME}" và thử lại từ key #1...`));
+  console.log(c.yellow(`   🪂 Model "${oldModel}" đã hết quota trên TẤT CẢ ${GEMINI_KEYS.length} key — chuyển sang tầng dự phòng kế tiếp "${currentModelName}" (tầng ${modelChainIndex + 1}/${MODEL_FALLBACK_CHAIN.length}) và thử lại từ key #1...`));
   return true;
+}
+
+// 🔝 Quay về ĐÚNG tầng ưu tiên cao nhất (đầu chuỗi) - dùng khi bắt đầu 1 vòng mega-retry mới, vì rất có thể
+// quota của tầng đầu đã hồi lại sau khoảng thời gian chờ, nên ưu tiên thử lại nó trước mỗi vòng mới.
+function resetToTopOfModelChain() {
+  if (modelChainIndex === 0) return;
+  modelChainIndex = 0;
+  currentModelName = geminiModelName();
+  const preservedHistory = chat.getHistory();
+  ai = new GoogleGenAI({ apiKey: currentGeminiKey() });
+  chat = ai.chats.create({ model: geminiModelName(), config: CHAT_CONFIG, history: preservedHistory });
 }
 
 // 📨 Gửi tin nhắn tới chat hiện tại. Với lỗi 503 (quá tải) HOẶC lỗi quota/key hỏng: tự động xoay qua
@@ -4968,8 +4994,8 @@ function switchToFallbackModel() {
 // (Xoay key với lỗi 503 có thể không giúp gì nếu Google quá tải toàn bộ, nhưng cũng không hại gì -
 // và đôi khi các key/dự án khác nhau vẫn có thể được định tuyến khác nhau nên vẫn đáng thử.)
 async function sendChatMessageWithRetryCore(messagePayload) {
-  // x2 vì có thể cần xoay hết vòng key trên MODEL_NAME, RỒI xoay tiếp 1 vòng nữa trên FALLBACK_MODEL_NAME
-  const maxAttempts = Math.max(GEMINI_KEYS.length * 2, 6);
+  // xN theo đúng số tầng trong MODEL_FALLBACK_CHAIN: có thể cần xoay hết vòng key trên MỖI tầng trước khi rớt xuống tầng kế tiếp
+  const maxAttempts = Math.max(GEMINI_KEYS.length * MODEL_FALLBACK_CHAIN.length, 6);
   const OVERLOAD_BACKOFF_MS = 1200; // chờ ngắn, cố định giữa các lần thử -> không kéo dài cả phút
   let attemptsOnCurrentModel = 0;
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
@@ -4986,8 +5012,8 @@ async function sendChatMessageWithRetryCore(messagePayload) {
       console.log(c.yellow(`   ⚠️ Lỗi lần ${attempt}/${maxAttempts} (${reason}): ${err.message?.slice(0, 120) || err}`));
 
       if (modelGone) {
-        // Đổi key vô ích với lỗi này -> chuyển thẳng model dự phòng ngay lập tức
-        if (!switchToFallbackModel()) throw err; // đã dùng fallback rồi mà fallback cũng chết -> chịu, báo lỗi thật
+        // Đổi key vô ích với lỗi này -> chuyển thẳng tầng dự phòng kế tiếp ngay lập tức
+        if (!advanceModelChain()) throw err; // đã ở tầng cuối chuỗi rồi mà cũng chết -> chịu, báo lỗi thật
         attemptsOnCurrentModel = 0;
         geminiKeyIndex = 0;
       } else if (networkOnly) {
@@ -4995,8 +5021,8 @@ async function sendChatMessageWithRetryCore(messagePayload) {
         // ĐÚNG KEY/MODEL hiện tại (đổi key không giúp ích gì khi vấn đề là kết nối, không phải quota).
       } else {
         attemptsOnCurrentModel++;
-        // Lỗi quota (không phải 503 tạm thời) + đã xoay hết vòng key trên model hiện tại -> thử model dự phòng
-        if (!overloaded && attemptsOnCurrentModel >= GEMINI_KEYS.length && switchToFallbackModel()) {
+        // Lỗi quota (không phải 503 tạm thời) + đã xoay hết vòng key trên model hiện tại -> thử tầng dự phòng kế tiếp
+        if (!overloaded && attemptsOnCurrentModel >= GEMINI_KEYS.length && advanceModelChain()) {
           attemptsOnCurrentModel = 0;
           geminiKeyIndex = 0; // thử lại từ key đầu tiên nhưng với model mới
         } else if (GEMINI_KEYS.length > 1) {
@@ -5058,23 +5084,17 @@ async function sendChatMessageWithRetry(messagePayload) {
       // thử lại liên tục gây tốn thêm quota vô ích khi rõ ràng đang bị chặn dài hạn.
       waitMs = Math.min(waitMs * 1.5, MEGA_RETRY_MAX_WAIT_MS);
 
-      // Thử lại từ đầu: key #1 + quay về model CHÍNH (không phải fallback) - vì rất có thể quota
-      // model chính đã hồi lại sau khoảng thời gian chờ, nên ưu tiên thử nó trước mỗi vòng mới.
+      // Thử lại từ đầu: key #1 + quay về tầng ĐẦU chuỗi (ưu tiên cao nhất, không phải tầng dự phòng) - vì
+      // rất có thể quota tầng đầu đã hồi lại sau khoảng thời gian chờ, nên ưu tiên thử nó trước mỗi vòng mới.
       geminiKeyIndex = 0;
-      if (usingFallbackModel) {
-        usingFallbackModel = false;
-        currentModelName = MODEL_NAME;
-        const preservedHistory = chat.getHistory();
-        ai = new GoogleGenAI({ apiKey: currentGeminiKey() });
-        chat = ai.chats.create({ model: geminiModelName(), config: CHAT_CONFIG, history: preservedHistory });
-      }
+      resetToTopOfModelChain();
     }
   }
 }
 
 // 🖼️ Gọi ai.models.generateContent (dùng cho describe_image), cùng logic kiên trì xoay hết key như trên.
 async function generateContentWithRetryCore(params) {
-  const maxAttempts = Math.max(GEMINI_KEYS.length * 2, 6);
+  const maxAttempts = Math.max(GEMINI_KEYS.length * MODEL_FALLBACK_CHAIN.length, 6);
   const OVERLOAD_BACKOFF_MS = 1200;
   let attemptsOnCurrentModel = 0;
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
@@ -5091,12 +5111,12 @@ async function generateContentWithRetryCore(params) {
       console.log(c.yellow(`   ⚠️ Lỗi lần ${attempt}/${maxAttempts} khi xem ảnh (${reason})...`));
 
       if (modelGone) {
-        if (!switchToFallbackModel()) throw err;
+        if (!advanceModelChain()) throw err;
         attemptsOnCurrentModel = 0;
         geminiKeyIndex = 0;
       } else {
         attemptsOnCurrentModel++;
-        if (!overloaded && attemptsOnCurrentModel >= GEMINI_KEYS.length && switchToFallbackModel()) {
+        if (!overloaded && attemptsOnCurrentModel >= GEMINI_KEYS.length && advanceModelChain()) {
           attemptsOnCurrentModel = 0;
           geminiKeyIndex = 0;
         } else if (GEMINI_KEYS.length > 1) {
@@ -5136,13 +5156,7 @@ async function generateContentWithRetry(params) {
 
       waitMs = Math.min(waitMs * 1.5, MEGA_RETRY_MAX_WAIT_MS);
       geminiKeyIndex = 0;
-      if (usingFallbackModel) {
-        usingFallbackModel = false;
-        currentModelName = MODEL_NAME;
-        const preservedHistory = chat.getHistory();
-        ai = new GoogleGenAI({ apiKey: currentGeminiKey() });
-        chat = ai.chats.create({ model: geminiModelName(), config: CHAT_CONFIG, history: preservedHistory });
-      }
+      resetToTopOfModelChain();
     }
   }
 }
@@ -5214,7 +5228,7 @@ async function compactChatHistoryIfNeeded() {
 
 // 🚀 Log khởi động, giống style server.js
 console.log(c.green(`🚀 Agent khởi động thành công`));
-console.log(c.gray(`   Model CHÍNH: ${currentModelName} — dự phòng khi hết quota: ${MODEL_NAME} → ${FALLBACK_MODEL_NAME}`));
+console.log(c.gray(`   Model CHÍNH: ${currentModelName} — chuỗi dự phòng khi hết quota: ${MODEL_FALLBACK_CHAIN.join(' → ')}`));
 console.log(c.gray(`   Gemini key: ${GEMINI_KEYS.length} key khả dụng, đang dùng #${geminiKeyIndex + 1} (${currentGeminiKey().slice(0, 8)}...${currentGeminiKey().slice(-4)})`));
 console.log(c.gray(`   Tavily: ${TAVILY_KEYS.length > 0 ? `${TAVILY_KEYS.length} key khả dụng, đang dùng #${tavilyKeyIndex + 1} (${currentTavilyKey().slice(0, 8)}...${currentTavilyKey().slice(-4)})` : 'CHƯA cấu hình'}`));
 console.log(c.gray(`   Thư mục làm việc: ${process.cwd()}`));
@@ -5921,7 +5935,7 @@ function stripQuotes(str) {
       }
 
       // Không gõ gì kèm theo -> hiện danh sách model Gemini hiện có (chính + dự phòng + bổ sung), chọn số là dùng luôn.
-      const options = [...new Set([MODEL_NAME, FALLBACK_MODEL_NAME, ...EXTRA_MODEL_CHOICES])];
+      const options = [...new Set([...MODEL_FALLBACK_CHAIN, ...EXTRA_MODEL_CHOICES])];
       console.log(c.cyan(`\n📋 Model (đang dùng: ${c.bold(currentModelName)}):\n`));
       options.forEach((name, i) => {
         console.log(`   ${c.bold(String(i + 1))}. ${name}${name === currentModelName ? c.green('  ← đang dùng') : ''}`);
