@@ -1798,6 +1798,57 @@ function checkLocalImportsExist(filePath, content) {
   return { checked: true, ok: true };
 }
 
+// 🎨 Phát hiện "minh hoạ SVG bị copy-paste trùng y hệt giữa 2 mục nội dung khác nhau" -
+// lỗi hay gặp khi agent tự vẽ minh hoạ (theo rule "tham khảo -> tự vẽ lại bằng SVG/CSS/Canvas")
+// cho nhiều mục cùng lúc (vd nhiều món trong 1 menu): dưới áp lực viết nhanh, agent copy nguyên
+// khối <svg> của mục trước sang mục sau thay vì vẽ riêng, khiến 2 mục khác nhau có hình y hệt nhau,
+// hoặc hình không khớp nội dung mục đó. checkForLazyPlaceholder KHÔNG bắt được lỗi này vì 2 khối SVG
+// trùng nhau vẫn là code hợp lệ về mặt cú pháp, không khớp bất kỳ mẫu "lười" nào.
+// Chỉ tính là "minh hoạ nội dung" (bỏ qua icon UI dùng lặp lại có chủ đích như mũi tên/giỏ hàng/tìm
+// kiếm) nếu khối SVG đủ phức tạp: >=3 phần tử hình HOẶC nội dung sau khi chuẩn hoá đủ dài.
+const SVG_BLOCK_RE = /<svg\b[^>]*>[\s\S]*?<\/svg>/gi;
+const SVG_SHAPE_TAG_RE = /<(path|circle|rect|ellipse|polygon|polyline|line)\b/gi;
+
+function checkForDuplicateIllustration(filePath, content) {
+  const ext = path.extname(filePath).toLowerCase();
+  if (!['.html', '.htm', '.jsx', '.tsx', '.vue', '.js', '.mjs', '.svelte'].includes(ext)) {
+    return { checked: false, ok: true };
+  }
+
+  const matches = content.match(SVG_BLOCK_RE) || [];
+  if (matches.length < 2) return { checked: true, ok: true }; // chưa đủ 2 khối để so trùng
+
+  const significant = matches
+    .map((raw, idx) => {
+      const shapeCount = (raw.match(SVG_SHAPE_TAG_RE) || []).length;
+      const normalized = raw
+        .replace(/\s+/g, ' ')
+        .replace(/\s(id|class)="[^"]*"/gi, '') // id/class khác nhau nhưng hình vẽ giống hệt vẫn phải bắt được
+        .trim();
+      return { idx, normalized, shapeCount, length: normalized.length };
+    })
+    .filter(s => s.shapeCount >= 3 || s.length >= 300);
+
+  const seen = new Map(); // nội dung đã chuẩn hoá -> index khối đầu tiên gặp
+  const dupPairs = [];
+  for (const s of significant) {
+    if (seen.has(s.normalized)) {
+      dupPairs.push([seen.get(s.normalized) + 1, s.idx + 1]);
+    } else {
+      seen.set(s.normalized, s.idx);
+    }
+  }
+
+  if (dupPairs.length > 0) {
+    const pairsDesc = dupPairs.map(([a, b]) => `khối SVG #${a} và #${b}`).join(', ');
+    return {
+      checked: true, ok: false,
+      error: `PHÁT HIỆN MINH HOẠ SVG TRÙNG Y HỆT GIỮA CÁC MỤC KHÁC NHAU: ${pairsDesc} (trong tổng ${matches.length} khối <svg> của file). Đây là dấu hiệu COPY-PASTE nguyên hình minh hoạ của 1 mục sang mục khác (vd 2 món ăn khác nhau trong menu nhưng dùng chung 1 hình vẽ) thay vì tự vẽ RIÊNG cho từng mục theo đúng tên/đặc điểm của mục đó. Phải vẽ lại 1 bố cục path/shape KHÁC BIỆT, phản ánh đúng nội dung riêng của từng mục - không tái sử dụng nguyên khối SVG giữa 2 mục nội dung khác nhau. (Icon UI lặp lại có chủ đích như mũi tên/giỏ hàng/kính lúp/ngôi sao đánh giá thì không bị tính vì thường nhỏ và đơn giản, dưới ngưỡng phát hiện.)`
+    };
+  }
+  return { checked: true, ok: true };
+}
+
 function passesSyntaxCheck(filePath, content) {
   const ext = path.extname(filePath).toLowerCase();
 
@@ -2287,12 +2338,15 @@ async function executeWriteFile(args) {
     const check = passesSyntaxCheck(args.path, args.content);
     const importCheck = checkLocalImportsExist(args.path, args.content);
     const placeholderCheck = checkForLazyPlaceholder(args.path, args.content);
+    const duplicateIllustrationCheck = checkForDuplicateIllustration(args.path, args.content);
     if (check.checked && !check.ok) {
       return autoDenyAndContinue(`Ghi file: ${args.path}`, `Nội dung định ghi bị lỗi cú pháp: ${check.error}`, { fixable: true });
     } else if (placeholderCheck.checked && !placeholderCheck.ok) {
       return autoDenyAndContinue(`Ghi file: ${args.path}`, placeholderCheck.error, { fixable: true });
     } else if (importCheck.checked && !importCheck.ok) {
       return autoDenyAndContinue(`Ghi file: ${args.path}`, importCheck.error, { fixable: true });
+    } else if (duplicateIllustrationCheck.checked && !duplicateIllustrationCheck.ok) {
+      return autoDenyAndContinue(`Ghi file: ${args.path}`, duplicateIllustrationCheck.error, { fixable: true });
     } else if (suspiciouslyShrunk) {
       return autoDenyAndContinue(`Ghi file: ${args.path}`, shrinkWarningReason(oldContent, args.content), { fixable: true });
     } else {
@@ -2396,12 +2450,15 @@ async function executeStrReplaceFile(args) {
     const check = passesSyntaxCheck(args.path, newContent);
     const importCheck = checkLocalImportsExist(args.path, newContent);
     const placeholderCheck = checkForLazyPlaceholder(args.path, newStr);
+    const duplicateIllustrationCheck = checkForDuplicateIllustration(args.path, newContent);
     if (check.checked && !check.ok) {
       return autoDenyAndContinue(`Sửa file: ${args.path}`, `Nội dung sau khi sửa bị lỗi cú pháp: ${check.error}`, { fixable: true });
     } else if (placeholderCheck.checked && !placeholderCheck.ok) {
       return autoDenyAndContinue(`Sửa file: ${args.path}`, placeholderCheck.error, { fixable: true });
     } else if (importCheck.checked && !importCheck.ok) {
       return autoDenyAndContinue(`Sửa file: ${args.path}`, importCheck.error, { fixable: true });
+    } else if (duplicateIllustrationCheck.checked && !duplicateIllustrationCheck.ok) {
+      return autoDenyAndContinue(`Sửa file: ${args.path}`, duplicateIllustrationCheck.error, { fixable: true });
     } else {
       const reason = check.checked ? 'đã qua kiểm tra cú pháp (node --check)' : 'không phải file JS, bỏ qua kiểm tra cú pháp';
       console.log(c.green(`   🤖 [AUTO] Tự động đồng ý sửa file (${reason}).`));
@@ -2668,14 +2725,39 @@ async function executeDeepResearch(args) {
   }
 
   const topUrls = raw.results.slice(0, numSources);
+
+  // ⚡ TỐI ƯU HIỆU NĂNG: nếu chưa có browserInstance nào đang mở sẵn (từ browser_open), tự mở 1 trình duyệt
+  // TẠM dùng CHUNG cho toàn bộ ${numSources} nguồn trong vòng này - thay vì để mỗi lần gọi executeWebFetchPage
+  // tự launch RỒI ĐÓNG NGAY 1 trình duyệt RIÊNG (rất chậm: mỗi lần khởi động trình duyệt tốn 1-3+ giây qua
+  // nhiều tầng dự phòng, N nguồn = N lần launch/đóng lãng phí thay vì chỉ 1 lần launch + N tab rẻ). Chỉ đóng
+  // lại ở cuối NẾU chính deep_research là bên tự mở ra - không đụng tới browserInstance THẬT của người dùng
+  // nếu họ đang có sẵn 1 phiên browser_open sống (auto-detect qua biến "ownedTempBrowser").
+  const ownedTempBrowser = !browserInstance;
+  if (ownedTempBrowser) {
+    try {
+      const mod = await loadPuppeteer();
+      browserInstance = await launchProfiledBrowser(mod.default, { headless: 'new' });
+    } catch (err) {
+      console.log(c.yellow(`   ⚠️ [Deep Research] Không mở được trình duyệt dùng chung (${err.message}) - mỗi nguồn sẽ tự launch riêng, chậm hơn nhưng vẫn chạy được.`));
+      browserInstance = null; // đảm bảo không để lại giá trị nửa vời nếu launch lỗi giữa chừng
+    }
+  }
+
   const sources = [];
-  for (const r of topUrls) {
-    const fetched = await executeWebFetchPage({ url: r.url, question });
-    if (fetched.success) {
-      sources.push({ title: fetched.title || r.title, url: r.url, content: fetched.content.slice(0, 4000) });
-    } else {
-      // 1 nguồn lỗi (timeout, chặn bot...) không nên làm hỏng cả kết quả - ghi nhận snippet ngắn của search_web thay thế.
-      sources.push({ title: r.title, url: r.url, content: `[Không mở được trang đầy đủ: ${fetched.error}] Snippet ngắn từ search: ${r.content?.slice(0, 300) || '(không có)'}` });
+  try {
+    for (const r of topUrls) {
+      const fetched = await executeWebFetchPage({ url: r.url, question });
+      if (fetched.success) {
+        sources.push({ title: fetched.title || r.title, url: r.url, content: fetched.content.slice(0, 4000) });
+      } else {
+        // 1 nguồn lỗi (timeout, chặn bot...) không nên làm hỏng cả kết quả - ghi nhận snippet ngắn của search_web thay thế.
+        sources.push({ title: r.title, url: r.url, content: `[Không mở được trang đầy đủ: ${fetched.error}] Snippet ngắn từ search: ${r.content?.slice(0, 300) || '(không có)'}` });
+      }
+    }
+  } finally {
+    if (ownedTempBrowser && browserInstance) {
+      try { await browserInstance.close(); } catch { /* có thể đã đóng sẵn */ }
+      browserInstance = null; // trả lại trạng thái "chưa có phiên nào mở" đúng như trước khi vào hàm này
     }
   }
 
@@ -4791,6 +4873,7 @@ Nguyên tắc làm việc:
 - Dùng read_image khi người dùng đưa đường dẫn ảnh và cần biết CHỮ trong ảnh đó (screenshot lỗi, ảnh scan tài liệu, văn bản...) — đây là OCR thuần, không "hiểu" ảnh.
 - Dùng describe_image khi người dùng muốn biết ảnh CÓ GÌ (người, vật, phong cảnh, hành động, màu sắc, bố cục...) — dùng khả năng xem ảnh multimodal của Gemini, không phải OCR. Nếu không chắc người dùng cần loại nào, có thể gọi cả 2 rồi tổng hợp.
 - PHÂN BIỆT RÕ "ẢNH THAM KHẢO" VÀ "ẢNH ASSET THẬT": khi người dùng gửi/chỉ vào 1 ảnh và nói các từ như "tham khảo", "làm giống vầy", "theo phong cách này", "nhìn ảnh này mà làm" — nghĩa là họ muốn bạn QUAN SÁT ảnh đó (màu sắc, bố cục, phong cách, tỷ lệ...) rồi TỰ VẼ LẠI bằng code thật (CSS shapes, SVG, Canvas vẽ tay, gradient...), TUYỆT ĐỐI KHÔNG được lấy thẳng file ảnh đó gắn làm background-image/asset/texture thật trong sản phẩm trừ khi người dùng NÓI RÕ RÀNG ý muốn dùng file ảnh đó trực tiếp (vd: "dùng luôn ảnh này làm nền", "chèn file này vào làm hình nền", "lấy ảnh này làm asset"). Nếu không chắc ý người dùng là tham khảo hay dùng trực tiếp, mặc định hiểu là THAM KHẢO (an toàn hơn, vì asset ảnh ngoài dễ dính bản quyền + không khớp kích thước/style code đang vẽ) và có thể hỏi lại 1 câu ngắn nếu thực sự mơ hồ.
+- ⚠️ KHI TỰ VẼ MINH HOẠ (SVG/CSS shapes/Canvas) CHO NHIỀU MỤC NỘI DUNG CÙNG LÚC (vd icon/hình minh hoạ cho từng món trong 1 menu, từng sản phẩm, từng card...): TUYỆT ĐỐI KHÔNG copy nguyên khối SVG/shape của mục này sang mục khác rồi chỉ đổi tên/giá bên cạnh - mỗi mục phải có bố cục path/shape RIÊNG, được vẽ dựa trên đặc điểm thật của chính mục đó (vd minh hoạ "Phở bò" phải khác "Bún chả", không dùng chung 1 hình bát mì chung chung). Trước khi coi là xong, tự đối chiếu lại: (1) từng mục có hình KHÁC với các mục còn lại không, (2) hình vẽ có thực sự khớp với tên/mô tả của đúng mục đó không (không vẽ đại khái rồi gắn bừa). Hệ thống có chặn tự động 1 phần lỗi này khi ghi file (phát hiện 2 khối SVG trùng y hệt nhau), nhưng KHÔNG bắt được trường hợp hình na ná nhau nhưng không trùng tuyệt đối, hoặc hình sai nội dung - phải tự kiểm bằng mắt/logic, không ỷ lại hoàn toàn vào chặn tự động.
 - Dùng remember_fact để lưu lại những thông tin quan trọng, mang tính lâu dài về dự án hoặc theo dặn dò của người dùng (ví dụ "nhớ giúp tôi..."), KHÔNG dùng để lưu những thứ vụn vặt, chỉ dùng 1 lần.
 - TỰ DỌN RÁC, đừng để người dùng phải dọn thay bạn: nếu trong lúc làm việc bạn tạo ra file thử-sai rồi bỏ (thử cách A không được, chuyển sang cách B), file trùng lặp, file tạm/không còn cần dùng nữa -> chủ động dùng delete_file để xoá nó đi TRƯỚC KHI báo hoàn thành, không để lại rác trong thư mục dự án. Không hỏi xin phép người dùng trước mỗi lần dọn loại rác do chính bạn tạo ra - cứ dọn rồi báo lại ngắn gọn đã xoá gì (đã có backup tự động nên an toàn để khôi phục nếu cần).
 - HẠN CHẾ HỎI LẠI NGƯỜI DÙNG NHỮNG CÂU VỤN VẶT: nếu có thể tự suy luận ra 1 phương án hợp lý (dựa vào ngữ cảnh, quy ước phổ biến, hoặc đơn giản là thử 1 cách rồi xem kết quả), CỨ LÀM LUÔN thay vì dừng lại hỏi xin xác nhận thêm chi tiết. Chỉ thực sự hỏi lại khi thông tin thiếu là THỰC SỰ QUAN TRỌNG và không có cách nào đoán hợp lý được (vd: yêu cầu quá mơ hồ tới mức làm sai hướng hoàn toàn, hoặc liên quan tới hành động phá huỷ dữ liệu không thể hoàn tác). Người dùng ghét bị hỏi nhiều câu lặt vặt.
@@ -4866,6 +4949,7 @@ CẤM "NHỚ LẠI" DỮ LIỆU CHÍNH XÁC TỪ TRÍ NHỚ - đây là nguồn 
 6. ⚠️ NẾU CHÍNH CÂU HỎI/YÊU CẦU CỦA NGƯỜI DÙNG CHỨA 1 TIỀN ĐỀ SAI (nhắc tới 1 hàm/tham số/API/tính năng KHÔNG tồn tại thật, vd hỏi "tham số responseSchema.strictMode dùng sao") - KHÔNG được lặng lẽ lờ nó đi rồi tự thay bằng thứ đúng mà không nói gì (im lặng "né khéo" khiến người dùng dễ tưởng nhầm cái sai đó vẫn có thật, chỉ là mình chọn cách khác). PHẢI nói THẲNG ngay từ đầu câu trả lời rằng chi tiết đó không tồn tại/không đúng theo những gì tra được, rồi mới đưa thông tin đúng thay thế - chỉ ra tiền đề sai còn quan trọng hơn cả việc tự trả lời đúng phần còn lại.
 7. ⚠️ PHÂN BIỆT RÕ "CODE/DOC NÓI GÌ" (sự thật, trích được) VÀ "SUY LUẬN VÌ SAO" (ý kiến của mình, KHÔNG phải sự thật) - đây là dạng bịa TINH VI NHẤT vì phần trích dẫn có thể đúng 100% (khiến người đọc tin tưởng), nhưng phần "giải thích lý do" phía sau lại là tự suy diễn rồi trình bày như thể đang đọc được từ nguồn. Khi được hỏi "tại sao lại chọn giá trị/thiết kế này" mà code/comment KHÔNG hề ghi rõ lý do (đọc kỹ không thấy dòng nào giải thích) - PHẢI nói thẳng "code không ghi rõ lý do, đây là suy đoán của tôi:" trước khi đưa ra bất kỳ suy luận nào, KHÔNG được bịa ra số liệu cụ thể nghe "kỹ sư" (vd "mỗi tab tốn 100-300MB RAM", "mất 5-15 giây") rồi trình bày như sự thật đã xác nhận từ code - dù suy luận đó nghe hợp lý tới đâu, nó vẫn phải được gắn nhãn RÕ RÀNG là suy luận, không phải trích dẫn.
 8. ⚠️ KHI MÔ TẢ CƠ CHẾ THẬT ĐÃ CÓ SẴN TRONG CODE hoạt động RA SAO (không phải hỏi nó có tồn tại hay không - hỏi điều kiện kích hoạt gì, đếm cái gì, làm gì khi kích hoạt) - PHẢI đọc kỹ chính đoạn LOGIC đó (không chỉ dòng khai báo hằng số/tên biến nghe có vẻ tự giải thích), rồi mô tả ĐÚNG những gì code thực sự làm. KHÔNG được tái dựng lại câu trả lời từ "mường tượng thông thường 1 cơ chế kiểu này hay hoạt động ra sao" (tên biến/hàm nghe hợp lý nên đoán theo pattern quen thuộc) - dễ đảo ngược đúng điều kiện thật, ví dụ: tưởng 1 bộ đếm tính số lần THẤT BẠI trong khi code thực tế lại cố tình chỉ đếm số lần THÀNH CÔNG (hoặc ngược lại), hoặc tưởng 1 cảnh báo là DỪNG CỨNG trong khi code thực tế chỉ bơm 1 dòng gợi ý mềm vào context chứ không ép buộc gì cả.
+9. ⚠️ SỬA 1 FILE XONG MÀ TRIỆU CHỨNG KHÔNG ĐỔI - nghi ngờ NGAY khả năng đang sửa nhầm bản KHÔNG PHẢI bản mà chương trình thực sự dùng, đừng lặp lại y hệt cách sửa cũ nhiều lần (đã có tiền lệ thật: sửa file DB seed data nhưng không hiệu lực vì có 2 file cùng tên "cafe.db" ở 2 thư mục khác nhau, code đang mở bằng đường dẫn TƯƠNG ĐỐI nên file thật được dùng phụ thuộc vào CWD lúc chạy server chứ không phải vị trí file db.js - sửa nhầm bản, tốn hàng chục vòng gọi tool mới phát hiện ra). Đặc biệt cảnh giác với file KHÔNG PHẢI mã nguồn thường (database .db/.sqlite, file .env, file config, seed/data file) được MỞ BẰNG ĐƯỜNG DẪN TƯƠNG ĐỐI trong code: (1) search_in_files toàn project tìm file khác CÙNG TÊN ở thư mục khác trước khi sửa, (2) xác định CWD thật lúc server/script chạy (xem lệnh khởi động trong package.json "scripts", hoặc hỏi người dùng server chạy từ thư mục nào) để biết đường dẫn tương đối đó thực sự trỏ tới đâu, (3) nếu có nhiều bản, sửa/xoá cho chỉ còn ĐÚNG 1 bản duy nhất (hoặc đổi code sang đường dẫn tuyệt đối/path.join(__dirname,...) để hết mập mờ vĩnh viễn) thay vì phải sửa tất cả các bản mỗi lần.
 `;
 
 // ⏰ Neo mốc thời gian THẬT vào system prompt - nếu không có dòng này, model hoàn toàn không có cơ sở nào
@@ -5342,8 +5426,8 @@ async function runAgentTurn(userInput) {
   if (stuckLoop) {
     contextBlocks.push(
       `[⚠️ CẢNH BÁO BẾ TẮC] File "${stuckLoop.filePath}" đã bị sửa ${stuckLoop.count} lần liên tiếp trong vòng này mà vẫn chưa qua được kiểm tra. ` +
-      `DỪNG NGAY cách tiếp cận hiện tại - đừng vá thêm theo hướng cũ. Thay vào đó: (1) Đọc lại TOÀN BỘ file này từ đầu, ` +
-      `(2) Đọc lại yêu cầu gốc của người dùng xem có hiểu sai chỗ nào không, (3) Thử một hướng giải quyết KHÁC HẲN thay vì lặp lại cùng kiểu sửa.`
+      `DỪNG NGAY cách tiếp cận hiện tại - đừng vá thêm theo hướng cũ. Thay vào đó: (1) search_in_files toàn project xem có file KHÁC CÙNG TÊN "${stuckLoop.filePath.split(/[\\/]/).pop()}" ở thư mục khác không - rất có thể đang sửa nhầm bản KHÔNG PHẢI bản chương trình thực sự dùng (đặc biệt nếu là file .db/.sqlite/.env/config mở bằng đường dẫn tương đối), (2) Đọc lại TOÀN BỘ file này từ đầu, ` +
+      `(3) Đọc lại yêu cầu gốc của người dùng xem có hiểu sai chỗ nào không, (4) Thử một hướng giải quyết KHÁC HẲN thay vì lặp lại cùng kiểu sửa.`
     );
   }
   if (pendingPhotoInsight) {
