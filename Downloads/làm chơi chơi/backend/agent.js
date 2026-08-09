@@ -2010,11 +2010,14 @@ function getBrowserProfileDir(kind) {
   return `${AGENT_BROWSER_PROFILE_BASE_DIR}-${kind}`;
 }
 
-// 🔓 Dọn file KHOÁ (lock) Chromium còn sót lại trước mỗi lần mở (chỉ áp dụng cho engine Chromium - Chrome/
-// Edge thật/bundled; Firefox dùng cơ chế khoá khác nên không cần dọn tay) - nguyên nhân RẤT PHỔ BIẾN gây
-// lỗi "Protocol error (Target.setAutoAttach): Target closed" ngay sau khi launch.
+// 🔓 Dọn file KHOÁ (lock) còn sót lại trong hồ sơ trước mỗi lần mở - nguyên nhân RẤT PHỔ BIẾN gây lỗi launch
+// ngay sau khi khởi động, cho CẢ 2 họ trình duyệt: Chromium dùng SingletonLock/SingletonCookie/SingletonSocket
+// (gây "Protocol error (Target.setAutoAttach): Target closed"); Firefox dùng "parent.lock" (Windows/Mac) hoặc
+// ".parentlock" (Linux) - nếu còn sót do tiến trình trước đóng không sạch, Firefox tưởng đang có phiên sống
+// nên tự hiện popup "đang chạy nhưng không phản hồi" chặn luôn không launch được (đã xảy ra thật, không phải
+// giả định suông - trước đây tưởng Firefox "tự xử lý ổn" nên bỏ qua bước dọn này, THỰC TẾ SAI).
 function cleanStaleBrowserProfileLocks(profileDir) {
-  for (const f of ['SingletonLock', 'SingletonCookie', 'SingletonSocket']) {
+  for (const f of ['SingletonLock', 'SingletonCookie', 'SingletonSocket', 'parent.lock', '.parentlock']) {
     try { fs.unlinkSync(path.join(profileDir, f)); } catch { /* không tồn tại, hoặc đang bị khoá thật bởi tiến trình sống - bỏ qua, không phải lỗi nghiêm trọng */ }
   }
 }
@@ -2048,7 +2051,7 @@ async function launchProfiledBrowser(puppeteer, extraLaunchOpts) {
   let lastErr;
   for (let i = 0; i < tiers.length; i++) {
     const { label, opts } = tiers[i];
-    if (opts.userDataDir && opts.product !== 'firefox') cleanStaleBrowserProfileLocks(opts.userDataDir);
+    if (opts.userDataDir) cleanStaleBrowserProfileLocks(opts.userDataDir);
     try {
       return await puppeteer.launch(opts);
     } catch (err) {
@@ -4860,6 +4863,7 @@ CẤM "NHỚ LẠI" DỮ LIỆU CHÍNH XÁC TỪ TRÍ NHỚ - đây là nguồn 
 3. Khi KHÔNG chắc chắn 1 con số/dữ kiện cụ thể (ví dụ: giá trị mặc định của 1 API, giới hạn của 1 thư viện, số phiên bản...) - PHẢI nói rõ "tôi không chắc, cần tra cứu lại" thay vì đưa ra 1 con số nghe hợp lý. Thà chậm 1 nhịp để tra cứu/tính toán còn hơn tự tin sai.
 4. Khi sửa/mở rộng 1 bảng dữ liệu có sẵn (thêm dòng vào bảng điểm, thêm entry vào danh sách hằng số...) - chỉ THÊM đúng phần mới, giữ nguyên 100% phần cũ đã đọc được, không viết lại toàn bộ bảng từ trí nhớ dù chỉ thêm 1 dòng.
 5. ⚠️ CẤM BỊA RA HÀM/METHOD/THAM SỐ KHÔNG TỒN TẠI - đây là dạng bịa NGUY HIỂM NHẤT vì "node --check" (kiểm tra cú pháp) KHÔNG bắt được lỗi này: gọi 1 hàm/method chưa từng được định nghĩa vẫn HỢP LỆ về cú pháp, chỉ vỡ khi thực sự CHẠY tới đúng dòng đó (ReferenceError/TypeError "is not a function"). Đã từng xảy ra thật trong chính file agent.js này (xem comment "checkPathSafety" ở gần đầu file - 1 AI khác gọi 1 hàm chưa từng định nghĩa ở 4 tool, khiến cả 4 tool luôn lỗi mà không ai phát hiện qua node --check). Trước khi coi là xong 1 đoạn code có gọi hàm/method/thuộc tính KHÔNG PHẢI built-in JS/Node quen thuộc và KHÔNG CHẮC CHẮN 100% là đã tồn tại (hàm tự viết lần đầu trong phiên này, method của 1 thư viện ít dùng, tham số của 1 API bên thứ 3...) - PHẢI xác nhận nó thực sự tồn tại: search_in_files để tìm định nghĩa nếu là hàm nội bộ trong project, hoặc search_web/đọc docs nếu là API của thư viện/SDK bên ngoài - không được "nghe có vẻ hợp lý nên chắc là có thật".
+6. ⚠️ NẾU CHÍNH CÂU HỎI/YÊU CẦU CỦA NGƯỜI DÙNG CHỨA 1 TIỀN ĐỀ SAI (nhắc tới 1 hàm/tham số/API/tính năng KHÔNG tồn tại thật, vd hỏi "tham số responseSchema.strictMode dùng sao") - KHÔNG được lặng lẽ lờ nó đi rồi tự thay bằng thứ đúng mà không nói gì (im lặng "né khéo" khiến người dùng dễ tưởng nhầm cái sai đó vẫn có thật, chỉ là mình chọn cách khác). PHẢI nói THẲNG ngay từ đầu câu trả lời rằng chi tiết đó không tồn tại/không đúng theo những gì tra được, rồi mới đưa thông tin đúng thay thế - chỉ ra tiền đề sai còn quan trọng hơn cả việc tự trả lời đúng phần còn lại.
 `;
 
 // ⏰ Neo mốc thời gian THẬT vào system prompt - nếu không có dòng này, model hoàn toàn không có cơ sở nào
