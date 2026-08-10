@@ -354,6 +354,18 @@ const EVIDENCE_ACTION_PATTERN = /^(\[AUTO\] )?(Chạy lệnh:|HTTP |\[Browser\]|
 const STUCK_LOOP_EDIT_THRESHOLD = 4;
 const EDIT_ACTION_PATH_PATTERN = /^(?:\[AUTO\] )?(?:Ghi file|Sửa file): (.+?)(?:\s\(|$)/;
 
+// 🖼️ Phát hiện VÒNG SĂN ẢNH/XÁC MINH VISION QUÁ ĐÀ: đếm số lần describe_image ("Xem ảnh") trong CHÍNH vòng
+// lớn hiện tại - tiền lệ THẬT đã xảy ra: 1 tác vụ chỉ cần thay 1-2 ảnh lỗi lại kéo dài tới ~20 lần gọi
+// describe_image (soát cả loạt + săn ứng viên thay thế vô hạn định) trước khi tự dừng, dù đã có hướng dẫn
+// trong prompt giới hạn 2-3 ứng viên/mục - hướng dẫn bằng lời KHÔNG đủ mạnh để tự dừng, cần đếm CỨNG trong
+// code như detectStuckLoop mới thực sự có tác dụng.
+const VISION_HUNT_THRESHOLD = 6;
+function detectVisionHuntLoop() {
+  const actionsThisRound = actionLog.slice(verificationRoundStartIndex);
+  const count = actionsThisRound.filter(a => /^(?:\[AUTO\] )?Xem ảnh/.test(a.label)).length;
+  return count >= VISION_HUNT_THRESHOLD ? count : null;
+}
+
 function detectStuckLoop() {
   const actionsThisRound = actionLog.slice(verificationRoundStartIndex);
   const editCounts = {};
@@ -918,23 +930,30 @@ async function executeReviewCodeForBugs(args) {
   }
 
   try {
-    const reviewResult = await generateContentWithRetry({
-      model: geminiModelName(),
-      contents: `${CODE_REVIEW_CHECKLIST}\n\nCode cần review:\n\n${codeBlocks.join('\n\n')}`,
-      config: { responseMimeType: 'application/json' }
-    });
-
-    let parsed;
-    try {
-      // 📎 Model đôi khi vẫn bọc ```json ... ``` dù đã set responseMimeType: json - tự bóc ra trước khi
-      // parse, không thì rơi vào fallback "coi như sạch" một cách âm thầm ngay ở trường hợp hay gặp nhất.
-      const rawText = (reviewResult.text || '').trim();
-      const fenceMatch = rawText.match(/```(?:json)?\s*([\s\S]*?)```/i);
-      const jsonText = fenceMatch ? fenceMatch[1].trim() : rawText;
-      parsed = JSON.parse(jsonText);
-    } catch (parseErr) {
-      console.log(c.gray(`   ⚠️ Review trả về không đúng JSON (bỏ qua lần này): ${(reviewResult.text || '').slice(0, 100)}`));
-      return { success: true, hasIssues: false, note: 'Không parse được kết quả review lần này - coi như chưa phát hiện vấn đề, nhưng nên tự kiểm tra kỹ thêm.' };
+    let parsed = null;
+    let lastRawText = '';
+    // 📎 Model đôi khi trả JSON hỏng/không parse được (bọc ```json, hoặc bị cắt cụt) - THỬ LẠI TỐI ĐA 2 LẦN
+    // trước khi chịu thua. Tiền lệ thật: coi "parse lỗi" = "hasIssues: false" (coi như sạch) ngay từ lần đầu
+    // là một lỗ hổng nguy hiểm - review THẤT BẠI trông giống hệt review THÀNH CÔNG VÀ KHÔNG CÓ VẤN ĐỀ từ góc
+    // nhìn của model gọi tool này, khiến cả lớp an toàn "review độc lập" bị vô hiệu hoá âm thầm mà không ai biết.
+    for (let attempt = 1; attempt <= 2 && !parsed; attempt++) {
+      const reviewResult = await generateContentWithRetry({
+        model: geminiModelName(),
+        contents: `${CODE_REVIEW_CHECKLIST}\n\nCode cần review:\n\n${codeBlocks.join('\n\n')}`,
+        config: { responseMimeType: 'application/json' }
+      });
+      lastRawText = (reviewResult.text || '').trim();
+      try {
+        const fenceMatch = lastRawText.match(/```(?:json)?\s*([\s\S]*?)```/i);
+        const jsonText = fenceMatch ? fenceMatch[1].trim() : lastRawText;
+        parsed = JSON.parse(jsonText);
+      } catch { /* thử lại vòng sau nếu còn lượt, không parsed thì vòng for sẽ tự lặp tiếp */ }
+    }
+    if (!parsed) {
+      console.log(c.red(`   ⚠️ Review trả về JSON hỏng 2/2 lần - KHÔNG coi là "đã review sạch", báo lỗi thật ra ngoài: ${lastRawText.slice(0, 100)}`));
+      // ⚠️ success:false (KHÔNG PHẢI true) - để model gọi tool này THẤY RÕ review chưa thực sự xảy ra, phải
+      // tự quyết định gọi lại hay báo cho người dùng biết, chứ không được ngầm coi như "đã kiểm tra, sạch".
+      return { success: false, error: 'Không parse được kết quả review sau 2 lần thử - review CHƯA THỰC SỰ diễn ra, không được coi đây là đã kiểm tra sạch. Có thể gọi lại review_code_for_bugs 1 lần nữa, hoặc tự đọc kỹ lại code thủ công thay thế.' };
     }
 
     const hasIssues = !!parsed.hasIssues;
@@ -5431,6 +5450,13 @@ async function runAgentTurn(userInput) {
       `[⚠️ CẢNH BÁO BẾ TẮC] File "${stuckLoop.filePath}" đã bị sửa ${stuckLoop.count} lần liên tiếp trong vòng này mà vẫn chưa qua được kiểm tra. ` +
       `DỪNG NGAY cách tiếp cận hiện tại - đừng vá thêm theo hướng cũ. Thay vào đó: (1) search_in_files toàn project xem có file KHÁC CÙNG TÊN "${stuckLoop.filePath.split(/[\\/]/).pop()}" ở thư mục khác không - rất có thể đang sửa nhầm bản KHÔNG PHẢI bản chương trình thực sự dùng (đặc biệt nếu là file .db/.sqlite/.env/config mở bằng đường dẫn tương đối), (2) Đọc lại TOÀN BỘ file này từ đầu, ` +
       `(3) Đọc lại yêu cầu gốc của người dùng xem có hiểu sai chỗ nào không, (4) Thử một hướng giải quyết KHÁC HẲN thay vì lặp lại cùng kiểu sửa.`
+    );
+  }
+  const visionHunt = detectVisionHuntLoop();
+  if (visionHunt) {
+    contextBlocks.push(
+      `[⚠️ CẢNH BÁO SĂN ẢNH QUÁ ĐÀ] Đã gọi describe_image ${visionHunt} lần trong vòng này. DỪNG NGAY việc tìm/kiểm tra thêm ảnh mới. Chốt luôn ứng viên TỐT NHẤT đã có trong số đã thử (dù chưa hoàn hảo 100%) và áp dụng ngay, ` +
+      `hoặc nếu thực sự chưa cái nào ổn thì dừng lại HỎI người dùng thay vì tự search/tải/kiểm tra thêm - không được search_web hay describe_image thêm bất kỳ ảnh mới nào nữa trong vòng này.`
     );
   }
   if (pendingPhotoInsight) {
