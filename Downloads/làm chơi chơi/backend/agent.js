@@ -5442,23 +5442,6 @@ async function runAgentTurn(userInput) {
     console.log(c.gray(`   ⚠️ Lỗi truy xuất bộ nhớ liên quan (bỏ qua, không ảnh hưởng lượt chat): ${err.message?.slice(0, 80) || err}`));
   }
 
-  // 🔁 Cảnh báo BẾ TẮC: nếu cùng 1 file bị sửa thành công ≥4 lần TRONG CHÍNH vòng này mà vẫn chưa qua
-  // được verify_requirements, ép agent DỪNG cách tiếp cận hiện tại thay vì tiếp tục vá mù quáng.
-  const stuckLoop = detectStuckLoop();
-  if (stuckLoop) {
-    contextBlocks.push(
-      `[⚠️ CẢNH BÁO BẾ TẮC] File "${stuckLoop.filePath}" đã bị sửa ${stuckLoop.count} lần liên tiếp trong vòng này mà vẫn chưa qua được kiểm tra. ` +
-      `DỪNG NGAY cách tiếp cận hiện tại - đừng vá thêm theo hướng cũ. Thay vào đó: (1) search_in_files toàn project xem có file KHÁC CÙNG TÊN "${stuckLoop.filePath.split(/[\\/]/).pop()}" ở thư mục khác không - rất có thể đang sửa nhầm bản KHÔNG PHẢI bản chương trình thực sự dùng (đặc biệt nếu là file .db/.sqlite/.env/config mở bằng đường dẫn tương đối), (2) Đọc lại TOÀN BỘ file này từ đầu, ` +
-      `(3) Đọc lại yêu cầu gốc của người dùng xem có hiểu sai chỗ nào không, (4) Thử một hướng giải quyết KHÁC HẲN thay vì lặp lại cùng kiểu sửa.`
-    );
-  }
-  const visionHunt = detectVisionHuntLoop();
-  if (visionHunt) {
-    contextBlocks.push(
-      `[⚠️ CẢNH BÁO SĂN ẢNH QUÁ ĐÀ] Đã gọi describe_image ${visionHunt} lần trong vòng này. DỪNG NGAY việc tìm/kiểm tra thêm ảnh mới. Chốt luôn ứng viên TỐT NHẤT đã có trong số đã thử (dù chưa hoàn hảo 100%) và áp dụng ngay, ` +
-      `hoặc nếu thực sự chưa cái nào ổn thì dừng lại HỎI người dùng thay vì tự search/tải/kiểm tra thêm - không được search_web hay describe_image thêm bất kỳ ảnh mới nào nữa trong vòng này.`
-    );
-  }
   if (pendingPhotoInsight) {
     contextBlocks.push(`[📸 Người dùng vừa gõ lệnh /photo lúc ${pendingPhotoInsight.timestamp} - đã TỰ chụp màn hình + phân tích xong (ảnh lưu tại "${pendingPhotoInsight.path}"), KHÔNG cần gọi lại take_screenshot/describe_image cho ảnh NÀY nữa trừ khi cần chụp mới]\nCâu hỏi lúc chụp: ${pendingPhotoInsight.question || '(không có, chỉ mô tả chung)'}\nKết quả phân tích ảnh:\n${pendingPhotoInsight.description}`);
     pendingPhotoInsight = null; // dùng 1 lần rồi xoá, tránh nhồi lặp lại ở các lượt chat sau
@@ -5578,11 +5561,31 @@ async function runAgentTurn(userInput) {
       gitCheckpoint(`Agent round #${roundCount}: ${summary}`);
     }
 
+    // 🔁 Cảnh báo BẾ TẮC + SĂN ẢNH QUÁ ĐÀ: tính lại SAU MỖI VÒNG (không phải 1 lần lúc đầu lượt chat như
+    // trước - lượt chat có thể kéo dài hàng trăm vòng gọi tool, tính 1 lần lúc đầu thì cảnh báo không bao
+    // giờ có cơ hội bắt được vòng lặp phát sinh giữa chừng). Bơm thẳng vào tin nhắn gửi lại Gemini ngay
+    // vòng kế tiếp, giống hệt cách autoSearchInject đang làm ở trên.
+    let loopWarningInject = '';
+    const stuckLoop = detectStuckLoop();
+    if (stuckLoop) {
+      loopWarningInject += `\n\n[⚠️ CẢNH BÁO BẾ TẮC] File "${stuckLoop.filePath}" đã bị sửa ${stuckLoop.count} lần liên tiếp trong vòng này mà vẫn chưa qua được kiểm tra. ` +
+        `DỪNG NGAY cách tiếp cận hiện tại - đừng vá thêm theo hướng cũ. Thay vào đó: (1) search_in_files toàn project xem có file KHÁC CÙNG TÊN "${stuckLoop.filePath.split(/[\\/]/).pop()}" ở thư mục khác không - rất có thể đang sửa nhầm bản KHÔNG PHẢI bản chương trình thực sự dùng (đặc biệt nếu là file .db/.sqlite/.env/config mở bằng đường dẫn tương đối), (2) Đọc lại TOÀN BỘ file này từ đầu, ` +
+        `(3) Đọc lại yêu cầu gốc của người dùng xem có hiểu sai chỗ nào không, (4) Thử một hướng giải quyết KHÁC HẲN thay vì lặp lại cùng kiểu sửa.`;
+    }
+    const visionHunt = detectVisionHuntLoop();
+    if (visionHunt) {
+      loopWarningInject += `\n\n[⚠️ CẢNH BÁO SĂN ẢNH QUÁ ĐÀ] Đã gọi describe_image ${visionHunt} lần trong vòng này. DỪNG NGAY việc tìm/kiểm tra thêm ảnh mới. Chốt luôn ứng viên TỐT NHẤT đã có trong số đã thử (dù chưa hoàn hảo 100%) và áp dụng ngay, ` +
+        `hoặc nếu thực sự chưa cái nào ổn thì dừng lại HỎI người dùng thay vì tự search/tải/kiểm tra thêm - không được search_web hay describe_image thêm bất kỳ ảnh mới nào nữa trong vòng này.`;
+    }
+
     // Inject auto-search results nếu có
     let toolMessagePayload = functionResponses;
     if (autoSearchInject) {
       // Inject as extra user context alongside function responses
       toolMessagePayload = [...functionResponses, { text: autoSearchInject }];
+    }
+    if (loopWarningInject) {
+      toolMessagePayload = [...(Array.isArray(toolMessagePayload) ? toolMessagePayload : functionResponses), { text: loopWarningInject }];
     }
 
     apiCallStart = Date.now();
