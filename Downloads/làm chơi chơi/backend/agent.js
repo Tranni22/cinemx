@@ -345,6 +345,17 @@ let verificationRoundStartIndex = 0;
 // 📎 Các dạng hành động được coi là "bằng chứng thực thi thật" - loại trừ hành động thụ động như
 // đọc file/ghi file/lập kế hoạch (những cái đó KHÔNG chứng minh được code chạy đúng).
 const EVIDENCE_ACTION_PATTERN = /^(\[AUTO\] )?(Chạy lệnh:|HTTP |\[Browser\]|Xem ảnh|Nghe âm thanh|Rình màn hình)/;
+// 🔴 Bằng chứng "LIVE" - CHỈ tính hành động thực sự chạm vào hệ thống ĐANG CHẠY THẬT ở nơi khác (gọi HTTP
+// tới URL thật, browser test, xem ảnh chụp/kiểm tra kết quả thật). KHÔNG bao gồm "Chạy lệnh:" vì lệnh như
+// "git push", "npm install", "vercel --version" chỉ chứng minh 1 lệnh chạy xong trên máy - KHÔNG chứng
+// minh hệ thống đang chạy ở chỗ khác (Vercel/Render...) hoạt động đúng. Lỗ hổng THẬT đã xảy ra: agent tự
+// tin báo "ĐÃ FIX XONG 100%, chạy mượt mà ngay lập tức" hết lần này tới lần khác chỉ sau khi git push,
+// chưa từng gọi thử URL deploy thật hay mở browser kiểm tra - phải tách riêng bằng chứng LIVE để chặn.
+const LIVE_EVIDENCE_ACTION_PATTERN = /^(\[AUTO\] )?(HTTP |\[Browser\]|Xem ảnh)/;
+// 🌐 Từ khoá nhận diện 1 "requirement" đang khẳng định hệ thống THỰC SỰ CHẠY ĐƯỢC/ĐÃ DEPLOY XONG (không
+// chỉ "code không còn lỗi cú pháp") - các yêu cầu khớp từ khoá này bắt buộc có LIVE_EVIDENCE_ACTION_PATTERN,
+// "Chạy lệnh: git push" hay "npm install" không đủ để tính "pass".
+const LIVE_CLAIM_KEYWORDS = /hoạt động|chạy (được|mượt|ổn|đúng|ngon)|đăng nhập (được|lại|thành công)|deploy( thành công)?|đã fix|sửa xong|fix xong|production|trực tuyến|\blive\b|24\/7|website|trang web|web đã|web (chạy|hoạt)/i;
 
 // 🔁 Phát hiện BẾ TẮC: quét actionLog trong CHÍNH vòng lớn hiện tại (dùng chung mốc
 // verificationRoundStartIndex), đếm xem file nào bị GHI/SỬA THÀNH CÔNG lặp lại quá nhiều lần - dấu hiệu
@@ -1415,7 +1426,7 @@ const tools = [{
     },
     {
       name: 'verify_requirements',
-      description: 'BẮT BUỘC gọi tool này TRƯỚC KHI báo hoàn thành 1 dự án/việc lớn (đặc biệt trong /project, /auto project) - đối chiếu lại TỪNG yêu cầu gốc của người dùng với BẰNG CHỨNG CỤ THỂ (trích code thật, kết quả run_command/browser_eval thật, mô tả từ describe_image thật...), KHÔNG được ghi bằng chứng kiểu chung chung mơ hồ như "ổn", "đúng rồi", "đã xong" (sẽ bị hệ thống tự động tính là FAIL vì không đủ thuyết phục). Nếu có bất kỳ yêu cầu nào chưa PASS, PHẢI quay lại sửa thật rồi gọi lại tool này để kiểm tra lại - không được tự ý coi là xong khi còn mục chưa đạt.',
+      description: 'BẮT BUỘC gọi tool này TRƯỚC KHI báo hoàn thành 1 dự án/việc lớn (đặc biệt trong /project, /auto project) - đối chiếu lại TỪNG yêu cầu gốc của người dùng với BẰNG CHỨNG CỤ THỂ (trích code thật, kết quả run_command/browser_eval thật, mô tả từ describe_image thật...), KHÔNG được ghi bằng chứng kiểu chung chung mơ hồ như "ổn", "đúng rồi", "đã xong" (sẽ bị hệ thống tự động tính là FAIL vì không đủ thuyết phục). Nếu có bất kỳ yêu cầu nào chưa PASS, PHẢI quay lại sửa thật rồi gọi lại tool này để kiểm tra lại - không được tự ý coi là xong khi còn mục chưa đạt. ⚠️ QUAN TRỌNG: với yêu cầu khẳng định 1 hệ thống ĐANG CHẠY THẬT ở nơi khác (web đã deploy, đăng nhập được trên trang thật, server online...), "git push"/"npm install"/chạy lệnh CLI KHÔNG đủ làm bằng chứng - chỉ chứng minh code đã lên máy chủ khác, không chứng minh nó CHẠY ĐÚNG ở đó. Bắt buộc phải gọi http_request/web_fetch tới đúng URL đang chạy thật, hoặc browser test/xem ảnh chụp kết quả thật, thì mới được đánh "pass" cho các yêu cầu dạng này - hệ thống sẽ tự hạ xuống "fail" nếu phát hiện thiếu bằng chứng loại này.',
       parameters: {
         type: 'object',
         properties: {
@@ -3845,6 +3856,21 @@ function executeVerifyRequirements(args) {
     noRealEvidenceWarning = 'Chưa phát hiện bất kỳ hành động KIỂM CHỨNG THẬT nào (chạy lệnh, mở browser test, gọi HTTP, xem ảnh chụp màn hình...) trong vòng này - mọi bằng chứng hiện tại chỉ là MÔ TẢ BẰNG LỜI, không được tính là "pass". Phải THỰC SỰ chạy thử/test rồi mới gọi lại verify_requirements.';
   }
 
+  // 🔴 Chặn riêng cho các yêu cầu khẳng định hệ thống ĐANG CHẠY THẬT/ĐÃ DEPLOY XONG: "Chạy lệnh" như
+  // git push/npm install KHÔNG đủ - bắt buộc phải có hành động chạm vào hệ thống thật (HTTP tới URL thật,
+  // browser test, xem ảnh chụp kết quả thật) trong CHÍNH vòng này thì mới được tính "pass" cho các mục đó.
+  let noLiveEvidenceWarning = null;
+  if (!noRealEvidenceWarning) {
+    const hasLiveEvidence = actionsThisRound.some(a => LIVE_EVIDENCE_ACTION_PATTERN.test(a.label));
+    if (!hasLiveEvidence) {
+      const liveClaims = normalized.filter(i => i.status === 'pass' && LIVE_CLAIM_KEYWORDS.test(i.requirement));
+      if (liveClaims.length > 0) {
+        for (const item of liveClaims) item.status = 'fail';
+        noLiveEvidenceWarning = `${liveClaims.length} yêu cầu khẳng định hệ thống ĐÃ CHẠY ĐƯỢC/LIVE (${liveClaims.map(i => `"${i.requirement}"`).join('; ')}) nhưng vòng này CHƯA hề gọi HTTP thật tới URL đang chạy, chưa mở browser test, hay xem ảnh chụp kết quả thật. "git push"/"npm install"/"vercel --version" chỉ chứng minh 1 lệnh chạy xong trên máy, KHÔNG chứng minh hệ thống ở nơi khác (Vercel/Render...) đang chạy đúng. Phải gọi http_request tới URL thật đang deploy, hoặc mở browser kiểm tra, rồi mới được tính "pass" cho các mục này.`;
+      }
+    }
+  }
+
   const allPassed = normalized.every(i => i.status === 'pass');
   const failedItems = normalized.filter(i => i.status === 'fail');
 
@@ -3852,6 +3878,9 @@ function executeVerifyRequirements(args) {
   console.log(c.cyan(`   ✅ verify_requirements: ${normalized.length - failedItems.length}/${normalized.length} yêu cầu PASS.`));
   if (noRealEvidenceWarning) {
     console.log(c.red(`   🚫 ${noRealEvidenceWarning}`));
+  }
+  if (noLiveEvidenceWarning) {
+    console.log(c.red(`   🚫 ${noLiveEvidenceWarning}`));
   }
   if (failedItems.length > 0) {
     console.log(c.yellow(`   ⚠️  Còn ${failedItems.length} yêu cầu CHƯA đạt: ${failedItems.map(i => i.requirement).join('; ')}`));
@@ -3866,6 +3895,8 @@ function executeVerifyRequirements(args) {
     failedItems: failedItems.length > 0 ? failedItems : undefined,
     hint: noRealEvidenceWarning
       ? noRealEvidenceWarning
+      : noLiveEvidenceWarning
+      ? noLiveEvidenceWarning
       : allPassed
       ? 'Tất cả yêu cầu đã PASS với bằng chứng cụ thể - có thể báo hoàn thành nếu đây đúng là bước kiểm tra cuối cùng.'
       : `CHƯA được báo hoàn thành - còn ${failedItems.length} yêu cầu chưa đạt hoặc bằng chứng chưa đủ thuyết phục (quá ngắn/mơ hồ). Phải SỬA những chỗ này thật sự rồi gọi lại verify_requirements để kiểm tra lại, không được tự ý bỏ qua.`
