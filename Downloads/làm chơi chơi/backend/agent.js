@@ -1705,7 +1705,11 @@ const BACKGROUND_COMMAND_PATTERNS = [
   /\bnpm\s+(run\s+)?(start|dev|serve)\b/i,
   /\byarn\s+(start|dev|serve)\b/i,
   /\bpnpm\s+(run\s+)?(start|dev|serve)\b/i,
-  /\bnode\s+\S+\.(js|mjs|cjs)\b/i, // chạy trực tiếp 1 file bằng node (index.js, server.js...) - loại trừ script 1 lần ở dưới
+  // 📌 SỬA LỖI THẬT (phát hiện qua test): bản cũ \bnode\s+\S+\.(js|mjs|cjs)\b chỉ khớp path KHÔNG có
+  // khoảng trắng - vỡ ngay khi thư mục dự án có dấu cách (rất phổ biến trên Windows, vd "Downloads\test
+  // agent\server.js"), khiến lệnh bị coi là script 1 lần thay vì server nền -> execSync treo đủ 60s rồi
+  // báo lỗi giả "ETIMEDOUT" dù server đã chạy thành công. Giờ nhận diện thêm path có quote (đơn hoặc kép).
+  /\bnode\s+(?:"[^"]+\.(?:js|mjs|cjs)"|'[^']+\.(?:js|mjs|cjs)'|\S+\.(?:js|mjs|cjs)\b)/i,
   /\bnodemon\b/i,
   /\bvite\b(?!.*\bbuild\b)/i, // vite (dev server) nhưng KHÔNG PHẢI "vite build" (lệnh 1 lần, tự thoát sau khi build xong)
   /\bpython\s+-m\s+http\.server\b/i,
@@ -2129,6 +2133,34 @@ function cleanStaleBrowserProfileLocks(profileDir) {
   }
 }
 
+// 🔪 Diệt TIẾN TRÌNH THẬT còn sống đang giữ hồ sơ này - lý do XOÁ FILE LOCK ở trên đôi khi VẪN KHÔNG ĐỦ:
+// nếu lần chạy trước agent bị tắt đột ngột (đóng cửa sổ terminal, mất điện, bị kill cứng...) thay vì thoát
+// sạch qua handleInterrupt, tiến trình Firefox/Chrome con có thể còn sống sót (zombie) và VẪN ĐANG GIỮ khoá
+// hồ sơ ở tầng OS - lúc đó unlink file lock là vô ích (tiến trình sống sẽ giữ/ghi lại ngay), và Firefox thật
+// sẽ tự hiện popup "đang chạy, nhưng không phản hồi" chặn đứng launch mới. Chỉ diệt tiến trình có COMMAND LINE
+// chứa ĐÚNG đường dẫn hồ sơ này (thư mục riêng của agent, path.join(AGENT_DIR, '.browser-profile-...') - không
+// trùng với bất kỳ trình duyệt nào khác người dùng tự mở tay) để tránh giết nhầm.
+function killStaleBrowserProcessesForProfile(profileDir) {
+  try {
+    if (process.platform === 'win32') {
+      const psProfileDir = profileDir.replace(/'/g, "''").replace(/\\/g, '\\\\');
+      const psScript = `Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like '*${psProfileDir}*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue; Write-Output $_.ProcessId }`;
+      const out = execSync(`powershell -NoProfile -Command "${psScript.replace(/"/g, '\\"')}"`, { encoding: 'utf-8', timeout: 8000, stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+      if (out) console.log(c.gray(`   🔪 [Browser] Đã diệt tiến trình cũ còn sót giữ hồ sơ "${profileDir}" (PID: ${out.split(/\s+/).join(', ')}).`));
+    } else {
+      const out = execSync('ps -eo pid,args', { encoding: 'utf-8', timeout: 8000, stdio: ['ignore', 'pipe', 'ignore'] });
+      const killed = [];
+      for (const line of out.split('\n')) {
+        if (!line.includes(profileDir)) continue;
+        const pid = parseInt(line.trim().split(/\s+/)[0], 10);
+        if (!pid || pid === process.pid) continue;
+        try { process.kill(pid, 'SIGKILL'); killed.push(pid); } catch { /* đã thoát sẵn từ trước */ }
+      }
+      if (killed.length) console.log(c.gray(`   🔪 [Browser] Đã diệt tiến trình cũ còn sót giữ hồ sơ "${profileDir}" (PID: ${killed.join(', ')}).`));
+    }
+  } catch { /* không tìm/diệt được cũng không sao, launch vẫn thử tiếp - chỉ mất 1 lớp phòng ngừa, không chặn luồng chính */ }
+}
+
 // 🚀 Launch trình duyệt CÓ HỒ SƠ LIÊN TỤC, tự đi qua NHIỀU TẦNG dự phòng theo thứ tự: Firefox thật (#1 -
 // không dính automation-detection kiểu Chromium, Facebook không chặn) -> Chrome/Edge thật (#2, dự phòng nếu
 // máy không có Firefox hoặc Firefox lỗi) -> Chromium bundled đi kèm puppeteer (#3, luôn tương thích 100% vì
@@ -2158,7 +2190,10 @@ async function launchProfiledBrowser(puppeteer, extraLaunchOpts) {
   let lastErr;
   for (let i = 0; i < tiers.length; i++) {
     const { label, opts } = tiers[i];
-    if (opts.userDataDir) cleanStaleBrowserProfileLocks(opts.userDataDir);
+    if (opts.userDataDir) {
+      killStaleBrowserProcessesForProfile(opts.userDataDir);
+      cleanStaleBrowserProfileLocks(opts.userDataDir);
+    }
     try {
       return await puppeteer.launch(opts);
     } catch (err) {
@@ -4885,6 +4920,12 @@ async function executeFunctionCall(call) {
 
   const sig = strategySignature(name, args);
   const priorFailure = strategyLedger.get(sig); // trạng thái TRƯỚC lần gọi này (nếu có)
+  // ⚠️ Chốt số liệu THÀNH SỐ THƯỜNG ngay bây giờ - KHÔNG giữ tham chiếu object priorFailure để đọc field
+  // sau này: strategyLedger.get(sig) TRẢ VỀ CÙNG 1 OBJECT REFERENCE, nên nếu bên dưới tăng entry.failCount++
+  // (entry === priorFailure, cùng object), giá trị priorFailure.failCount cũng bị tăng theo NGAY LẬP TỨC ->
+  // build message sau đó sẽ bị cộng dư (bug thật đã xảy ra: log báo "thất bại 3 lần" trong khi mới có 2).
+  const priorFailCount = priorFailure ? priorFailure.failCount : 0;
+  const priorLastError = priorFailure ? priorFailure.lastError : null;
   const output = await executeFunctionCallDispatch(call);
 
   if (output && output.success === false) {
@@ -4894,8 +4935,8 @@ async function executeFunctionCall(call) {
     else strategyLedger.set(sig, { failCount: 1, lastError: errText, toolName: name });
 
     if (priorFailure) {
-      output.strategyLedgerWarning = `⚠️ [STRATEGY LEDGER] Đây là lần thứ ${priorFailure.failCount + 1} gọi "${name}" với ĐÚNG CÙNG tham số này trong phiên, và LẦN NÀO CŨNG THẤT BẠI (lỗi gần nhất trước đó: "${priorFailure.lastError}"). KHÔNG lặp lại y hệt nữa - đổi hẳn tham số/chiến lược khác, search_web tra cách khác, hoặc dừng lại hỏi người dùng nếu đã hết ý — lặp lại y hệt chỉ tốn thêm 1 vòng vô ích.`;
-      console.log(c.red(`   📒 [Strategy Ledger] "${name}" đã thất bại ${priorFailure.failCount + 1} lần với cùng tham số - đã cảnh báo AI.`));
+      output.strategyLedgerWarning = `⚠️ [STRATEGY LEDGER] Đây là lần thứ ${priorFailCount + 1} gọi "${name}" với ĐÚNG CÙNG tham số này trong phiên, và LẦN NÀO CŨNG THẤT BẠI (lỗi gần nhất trước đó: "${priorLastError}"). KHÔNG lặp lại y hệt nữa - đổi hẳn tham số/chiến lược khác, search_web tra cách khác, hoặc dừng lại hỏi người dùng nếu đã hết ý — lặp lại y hệt chỉ tốn thêm 1 vòng vô ích.`;
+      console.log(c.red(`   📒 [Strategy Ledger] "${name}" đã thất bại ${priorFailCount + 1} lần với cùng tham số - đã cảnh báo AI.`));
     }
   } else if (strategyLedger.has(sig)) {
     strategyLedger.delete(sig); // lần này thành công -> không còn là "đã chứng minh thất bại" nữa
