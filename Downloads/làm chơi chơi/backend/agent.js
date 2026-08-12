@@ -305,6 +305,24 @@ let recentErrors = []; // { timestamp, toolName, errorText }
 const MAX_RECENT_ERRORS = 10;
 const ERROR_SEARCH_THRESHOLD = 2; // cùng 1 lỗi xuất hiện bao nhiêu lần thì tự search
 
+// 📒 STRATEGY LEDGER — "đã chứng minh cách này không hoạt động, đừng thử lại y hệt".
+// Khác với recentErrors/ERROR_SEARCH_THRESHOLD ở trên (đếm LỖI TƯƠNG TỰ lặp lại để biết "đang bí, cần
+// search" - tham số mỗi lần có thể khác nhau), cái này ghi nhớ CHÍNH XÁC (tên tool + tham số) nào đã
+// THẤT BẠI, để phát hiện ngay khi AI gọi lại Y HỆT 1 hành động đã chứng minh không ăn thua (cùng lệnh,
+// cùng URL, cùng toạ độ...) - trường hợp đó gần như chắc chắn vô ích trừ khi trạng thái máy đã đổi.
+// Không áp cho tool đọc/thụ động (read_file, search_web, list_directory...) vì gọi lại y hệt các tool đó
+// là chuyện bình thường (đọc lại để lấy trạng thái MỚI). Tồn tại suốt phiên (không reset theo round) vì
+// "đã chứng minh không hoạt động" là 1 sự thật không đổi theo round.
+const STRATEGY_LEDGER_TOOLS = new Set([
+  'run_command', 'install_package', 'http_request', 'browser_open', 'browser_click',
+  'browser_type', 'browser_eval', 'mouse_click', 'type_text', 'open_app',
+  'kill_process', 'stop_background_process', 'git_rollback'
+]);
+const strategyLedger = new Map(); // signature -> { failCount, lastError, toolName }
+function strategySignature(name, args) {
+  try { return `${name}::${JSON.stringify(args)}`; } catch { return `${name}::[unserializable]`; }
+}
+
 // 🛡️ Dùng khi đang /auto on mà gặp việc bị chặn: KHÔNG hỏi thủ công (sẽ treo màn hình chờ),
 // mà tự động coi như bị từ chối, trả lỗi rõ ràng để AI tự đọc và xử lý tiếp.
 // - fixable=true (lỗi KỸ THUẬT do chính AI viết sai, vd lỗi cú pháp): BẮT BUỘC tự sửa cho đúng rồi thử lại ngay,
@@ -356,6 +374,14 @@ const LIVE_EVIDENCE_ACTION_PATTERN = /^(\[AUTO\] )?(HTTP |\[Browser\]|Xem ảnh)
 // chỉ "code không còn lỗi cú pháp") - các yêu cầu khớp từ khoá này bắt buộc có LIVE_EVIDENCE_ACTION_PATTERN,
 // "Chạy lệnh: git push" hay "npm install" không đủ để tính "pass".
 const LIVE_CLAIM_KEYWORDS = /hoạt động|chạy (được|mượt|ổn|đúng|ngon)|đăng nhập (được|lại|thành công)|deploy( thành công)?|đã fix|sửa xong|fix xong|production|trực tuyến|\blive\b|24\/7|website|trang web|web đã|web (chạy|hoạt)/i;
+
+// 🛡️ NEGATIVE VERIFICATION: yêu cầu nào rơi vào nhóm đăng nhập/phân quyền/bảo mật/thanh toán/validate input
+// thì test "trường hợp ĐÚNG" (login đúng vào được) là CHƯA ĐỦ - còn phải test "trường hợp KHÔNG ĐƯỢC PHÉP
+// xảy ra" (login sai bị từ chối, chưa đăng nhập không vào được trang cần quyền, input sai bị chặn...).
+// Đây chính là lỗ hổng thật hay gặp: agent chỉ test happy-path rồi báo "pass" trong khi case ngược lại
+// (bảo mật/validate) chưa từng được thử.
+const NEGATIVE_CLAIM_KEYWORDS = /đăng nhập|đăng ký|xác thực|authen|authoriz|phân quyền|quyền truy cập|permission|\brole\b|\badmin\b|mật khẩu|password|bảo mật|security|validat|hợp lệ|thanh toán|payment|giỏ hàng|checkout|\bsession\b|\btoken\b|logout|đăng xuất/i;
+const NEGATIVE_EVIDENCE_HINT = /sai (mật khẩu|thông tin|dữ liệu|input|otp|định dạng)?|từ chối|reject|không cho phép|bị chặn|\bchặn\b|unauthorized|\b401\b|\b403\b|invalid|không hợp lệ|báo lỗi đúng|hiện lỗi đúng|không (vào|truy cập) được|redirect.{0,15}(login|đăng nhập)|quay về.{0,15}(đăng nhập|login)|hết hạn|expire/i;
 
 // 🔁 Phát hiện BẾ TẮC: quét actionLog trong CHÍNH vòng lớn hiện tại (dùng chung mốc
 // verificationRoundStartIndex), đếm xem file nào bị GHI/SỬA THÀNH CÔNG lặp lại quá nhiều lần - dấu hiệu
@@ -3871,6 +3897,19 @@ function executeVerifyRequirements(args) {
     }
   }
 
+  // 🛡️ Chặn riêng cho các yêu cầu đăng nhập/phân quyền/bảo mật/thanh toán: nếu evidence chỉ mô tả
+  // trường hợp ĐÚNG mà không hề nhắc tới việc đã thử case SAI/bị từ chối, hạ xuống "fail".
+  let negativeVerificationWarning = null;
+  if (!noRealEvidenceWarning && !noLiveEvidenceWarning) {
+    const needsNegativeCheck = normalized.filter(i =>
+      i.status === 'pass' && NEGATIVE_CLAIM_KEYWORDS.test(i.requirement) && !NEGATIVE_EVIDENCE_HINT.test(i.evidence)
+    );
+    if (needsNegativeCheck.length > 0) {
+      for (const item of needsNegativeCheck) item.status = 'fail';
+      negativeVerificationWarning = `${needsNegativeCheck.length} yêu cầu liên quan đăng nhập/phân quyền/bảo mật/thanh toán (${needsNegativeCheck.map(i => `"${i.requirement}"`).join('; ')}) nhưng bằng chứng CHỈ mô tả trường hợp ĐÚNG (happy path) - chưa test trường hợp NGƯỢC LẠI (vd: nhập sai mật khẩu có bị từ chối không? chưa đăng nhập có vào được trang cần quyền không? input sai định dạng có bị chặn không?). Phải THỬ THÊM case sai/bị từ chối và ghi rõ kết quả quan sát được (vd "nhập sai mật khẩu -> hệ thống báo lỗi, không cho vào") thì mới được tính "pass" cho các mục này.`;
+    }
+  }
+
   const allPassed = normalized.every(i => i.status === 'pass');
   const failedItems = normalized.filter(i => i.status === 'fail');
 
@@ -3881,6 +3920,9 @@ function executeVerifyRequirements(args) {
   }
   if (noLiveEvidenceWarning) {
     console.log(c.red(`   🚫 ${noLiveEvidenceWarning}`));
+  }
+  if (negativeVerificationWarning) {
+    console.log(c.red(`   🚫 ${negativeVerificationWarning}`));
   }
   if (failedItems.length > 0) {
     console.log(c.yellow(`   ⚠️  Còn ${failedItems.length} yêu cầu CHƯA đạt: ${failedItems.map(i => i.requirement).join('; ')}`));
@@ -3897,6 +3939,8 @@ function executeVerifyRequirements(args) {
       ? noRealEvidenceWarning
       : noLiveEvidenceWarning
       ? noLiveEvidenceWarning
+      : negativeVerificationWarning
+      ? negativeVerificationWarning
       : allPassed
       ? 'Tất cả yêu cầu đã PASS với bằng chứng cụ thể - có thể báo hoàn thành nếu đây đúng là bước kiểm tra cuối cùng.'
       : `CHƯA được báo hoàn thành - còn ${failedItems.length} yêu cầu chưa đạt hoặc bằng chứng chưa đủ thuyết phục (quá ngắn/mơ hồ). Phải SỬA những chỗ này thật sự rồi gọi lại verify_requirements để kiểm tra lại, không được tự ý bỏ qua.`
@@ -4832,7 +4876,35 @@ async function executeKillProcess(args) {
   };
 }
 
+// 📒 Wrapper mỏng bọc ngoài dispatch thật (executeFunctionCallDispatch bên dưới): trước/sau khi thực thi
+// các tool "hành động" (STRATEGY_LEDGER_TOOLS), tra/ghi strategyLedger để cảnh báo khi phát hiện AI vừa
+// lặp lại Y HỆT 1 hành động đã từng thất bại trước đó trong phiên này.
 async function executeFunctionCall(call) {
+  const { name, args } = call;
+  if (!STRATEGY_LEDGER_TOOLS.has(name)) return executeFunctionCallDispatch(call);
+
+  const sig = strategySignature(name, args);
+  const priorFailure = strategyLedger.get(sig); // trạng thái TRƯỚC lần gọi này (nếu có)
+  const output = await executeFunctionCallDispatch(call);
+
+  if (output && output.success === false) {
+    const errText = (output.error || '').slice(0, 200);
+    const entry = strategyLedger.get(sig);
+    if (entry) { entry.failCount++; entry.lastError = errText; }
+    else strategyLedger.set(sig, { failCount: 1, lastError: errText, toolName: name });
+
+    if (priorFailure) {
+      output.strategyLedgerWarning = `⚠️ [STRATEGY LEDGER] Đây là lần thứ ${priorFailure.failCount + 1} gọi "${name}" với ĐÚNG CÙNG tham số này trong phiên, và LẦN NÀO CŨNG THẤT BẠI (lỗi gần nhất trước đó: "${priorFailure.lastError}"). KHÔNG lặp lại y hệt nữa - đổi hẳn tham số/chiến lược khác, search_web tra cách khác, hoặc dừng lại hỏi người dùng nếu đã hết ý — lặp lại y hệt chỉ tốn thêm 1 vòng vô ích.`;
+      console.log(c.red(`   📒 [Strategy Ledger] "${name}" đã thất bại ${priorFailure.failCount + 1} lần với cùng tham số - đã cảnh báo AI.`));
+    }
+  } else if (strategyLedger.has(sig)) {
+    strategyLedger.delete(sig); // lần này thành công -> không còn là "đã chứng minh thất bại" nữa
+  }
+
+  return output;
+}
+
+async function executeFunctionCallDispatch(call) {
   const { name, args } = call;
   console.log(c.cyan(`\n🔧 Gọi công cụ: ${name}(${JSON.stringify(args).slice(0, 150)})`));
 
@@ -4952,6 +5024,8 @@ Nguyên tắc làm việc:
 - QUY TRÌNH TEST WEB CHUẨN (dùng browser_*): (1) browser_open URL/file HTML, (2) đọc consoleErrorsOnLoad trả về xem có lỗi ngay lúc tải không, (3) browser_click/browser_type để thao tác từng bước theo đúng ID/class thật trong code (đọc qua read_file trước nếu chưa chắc tên id/class), (4) SAU MỖI thao tác quan trọng, kiểm tra newConsoleErrorsAfterClick VÀ gọi browser_eval để xác nhận đúng biến/trạng thái mong đợi thật sự đổi (vd sau khi click nút "Bắt đầu" thì eval "gameRunning" phải trả về true, không chỉ nhìn ảnh thấy màn hình đổi là đủ), (5) browser_screenshot + describe_image nếu cần xác nhận thêm phần trực quan (màu sắc, bố cục, animation - những thứ eval không kiểm tra được), (6) browser_close khi xong. Nếu browser_open báo lỗi thiếu puppeteer, thông báo ngắn gọn cho người dùng biết cần chạy "npm install puppeteer" để có khả năng test chính xác này, rồi tạm quay lại cách mouse_click/take_screenshot cũ cho lần này.
 - VỊ TRÍ TẠO FILE/DỰ ÁN: thư mục làm việc hiện tại là "${process.cwd()}". Nếu người dùng NÓI RÕ vị trí/tên thư mục muốn tạo (vd: "tạo ở D:/projects/todo-app", "tạo trong thư mục moi-project", "tạo ở ngoài Desktop"...) -> PHẢI tạo đúng ở đó (dùng đường dẫn tương đối hoặc tuyệt đối cho khớp), TUYỆT ĐỐI không tự ý đổi sang thư mục hiện tại. Nếu người dùng yêu cầu 1 DỰ ÁN MỚI, TÁCH BIỆT (không phải sửa/thêm tính năng cho code đang có trong thư mục hiện tại) nhưng KHÔNG nói rõ vị trí -> mặc định tạo trong 1 thư mục con MỚI đặt tên theo dự án ngay trong thư mục hiện tại (vd: "./todo-app/..."), KHÔNG ném thẳng file vào ngay thư mục gốc đang chạy agent (đặc biệt nếu thư mục đó đã có sẵn code của 1 dự án khác như "backend" - tuyệt đối không trộn lẫn 2 dự án vào chung 1 chỗ). Nếu còn nghi ngờ nên tạo ở đâu, hỏi lại người dùng 1 câu ngắn gọn trước khi bắt đầu tạo hàng loạt file.
 - TUYỆT ĐỐI KHÔNG SỬA FILE CỦA 1 DỰ ÁN/TÍNH NĂNG KHÔNG LIÊN QUAN chỉ để thêm code cho việc đang làm: trước khi dùng str_replace_file/write_file lên 1 file ĐÃ CÓ SẴN NỘI DUNG, đọc qua nội dung hiện tại (đã có qua read_file) xem file đó thuộc về mảng nào (vd: "server.js" đang phục vụ web chat, có routes/chat.routes.js, socket.io chat...) - nếu yêu cầu hiện tại (vd: làm game caro) KHÔNG liên quan gì tới nội dung sẵn có của file đó, DỪNG LẠI, không nhét import/code không liên quan vào file đó. Thay vào đó tạo file/thư mục MỚI riêng cho việc đang làm (theo đúng quy tắc VỊ TRÍ ở trên). Nếu thực sự không chắc file nào đúng, hỏi lại người dùng thay vì đoán bừa rồi sửa nhầm file quan trọng của họ.
+- ⚠️ "MỞ LÊN XEM"/"CHẠY THỬ XEM"/"CHO TÔI XEM WEB ĐÓ" NGHĨA LÀ CHẠY NÓ LÊN ĐỂ NGƯỜI DÙNG TỰ NHÌN, KHÔNG PHẢI TỰ ĐỌC-ĐÁNH GIÁ-SỬA LẠI: hành động ĐÚNG khi nhận yêu cầu kiểu này là chạy lệnh khởi động phù hợp (npm run dev/npm start/node...) rồi open_app trỏ đúng địa chỉ (thường localhost:PORT) để họ tự xem trên màn hình - KHÔNG tự ý đọc sâu toàn bộ source code rồi chủ động đưa ra nhận xét "web này sơ sài/đồ đểu", càng không tự ý bắt tay nâng cấp nếu không ai yêu cầu. Nếu việc "mở lên" gặp lỗi (thiếu dependency, port bận, thiếu file entry point...), báo lỗi CỤ THỂ đó và hỏi hướng xử lý, không tự ý chuyển hướng sang việc khác (như đi đọc/chê code) khi việc gốc chỉ đơn giản là chưa mở được.
+- ⚠️ LỜI CHÊ/THAN VÃN VỀ 1 DỰ ÁN CÓ SẴN KHÔNG MẶC NHIÊN LÀ LỆNH "SỬA LẠI TOÀN BỘ" - đặc biệt nguy hiểm với dự án người dùng KHÔNG TỰ VIẾT (bạn bè cho, tải trên mạng, nhặt được...) vì họ có thể chỉ đang xem/than thở, chưa chắc muốn động vào code người khác. Câu như "nhìn lỏ/xấu/dở vậy", "web đểu vậy" là CẢM NHẬN, KHÔNG phải lệnh "hãy update_plan + install_package + ghi đè lại toàn bộ dữ liệu/giao diện". TRƯỚC KHI bắt đầu 1 kế hoạch nâng cấp lớn (cài package mới, ghi đè file dữ liệu/component có sẵn) mà KHÔNG được yêu cầu rõ ràng bằng lời, hỏi lại 1 câu ngắn xác nhận trước ("Bạn muốn tôi sửa lại luôn không, hay chỉ đang nhận xét thôi?") - chỉ tự tiến hành thẳng khi người dùng xác nhận đúng là muốn sửa, hoặc yêu cầu ban đầu đã rõ ràng là 1 lệnh hành động (vd "sửa lại cho đẹp đi", "nâng cấp giúp tôi") chứ không phải câu cảm thán đơn thuần.
 - LẬP KẾ HOẠCH TRƯỚC KHI LÀM VIỆC LỚN: nếu yêu cầu cần từ 2 bước hoặc 2 file trở lên (tính năng mới, refactor, dự án nhiều file...), BẮT BUỘC gọi update_plan để viết checklist các bước TRƯỚC khi bắt đầu sửa code, rồi trình bày ngắn gọn kế hoạch đó cho người dùng xem qua trước khi thực hiện các bước tốn nhiều thao tác. Sau mỗi bước hoàn thành, gọi lại update_plan để đánh dấu [x] và cập nhật tiến độ — đừng để checklist bị lỗi thời. Kế hoạch này sẽ được nhắc lại ở đầu MỌI lượt chat sau đó (không phụ thuộc trí nhớ từ lịch sử hội thoại), nên PHẢI dựa vào nó để biết đang làm tới đâu, tránh lặp lại việc đã xong hoặc bỏ sót việc chưa làm — nếu thấy kế hoạch có sẵn từ đầu tin nhắn, đọc kỹ trước khi quyết định bước tiếp theo.
 - SAU KHI HOÀN THÀNH 1 VIỆC LỚN (nhiều file/nhiều bước): chủ động chạy lệnh kiểm tra phù hợp với dự án (node --check cho từng file JS đã sửa, npm test nếu có, npm run build/lint nếu có) để bắt lỗi vặt ẩn TRƯỚC KHI báo hoàn thành cho người dùng — không chỉ tự tin bằng mắt.
 - TỰ KIỂM TRA BẰNG MẮT TRƯỚC KHI BÁO XONG (không chỉ tin vào "chạy không lỗi cú pháp"): với bất kỳ sản phẩm nào CÓ GIAO DIỆN/CHẠY ĐƯỢC TRỰC QUAN (game, web app, GUI desktop, trang HTML...), sau khi code xong và qua kiểm tra cú pháp, BẮT BUỘC phải:
