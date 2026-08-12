@@ -1,0 +1,444 @@
+import { createHotContext as __vite__createHotContext } from "/@vite/client";import.meta.hot = __vite__createHotContext("/src/components/ReceiptInvoice.jsx");import __vite__cjsImport0_react_jsxDevRuntime from "/node_modules/.vite/deps/react_jsx-dev-runtime.js?v=40bcafeb"; const jsxDEV = __vite__cjsImport0_react_jsxDevRuntime["jsxDEV"];
+import * as RefreshRuntime from "/@react-refresh";
+const inWebWorker = typeof WorkerGlobalScope !== "undefined" && self instanceof WorkerGlobalScope;
+let prevRefreshReg;
+let prevRefreshSig;
+if (import.meta.hot && !inWebWorker) {
+  if (!window.$RefreshReg$) {
+    throw new Error(
+      "@vitejs/plugin-react can't detect preamble. Something is wrong."
+    );
+  }
+  prevRefreshReg = window.$RefreshReg$;
+  prevRefreshSig = window.$RefreshSig$;
+  window.$RefreshReg$ = RefreshRuntime.getRefreshReg("C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/ReceiptInvoice.jsx");
+  window.$RefreshSig$ = RefreshRuntime.createSignatureFunctionForTransform;
+}
+import __vite__cjsImport3_react from "/node_modules/.vite/deps/react.js?v=40bcafeb"; const React = __vite__cjsImport3_react.__esModule ? __vite__cjsImport3_react.default : __vite__cjsImport3_react;
+import { Coffee, Printer, CheckCircle2, X } from "/node_modules/.vite/deps/lucide-react.js?v=40bcafeb";
+export default function ReceiptInvoice({ receiptData, onClose }) {
+  if (!receiptData) return null;
+  const { shopName, shopAddress, shopPhone, order } = receiptData;
+  const handlePrint = () => {
+    window.print();
+  };
+  return /* @__PURE__ */ jsxDEV("div", { className: "fixed inset-0 z-50 flex items-center justify-center bg-gray-900/80 backdrop-blur-sm p-4 overflow-y-auto", children: /* @__PURE__ */ jsxDEV("div", { className: "w-full max-w-md bg-white rounded-3xl shadow-2xl overflow-hidden border border-gray-100 my-8", children: [
+    /* @__PURE__ */ jsxDEV("div", { className: "no-print bg-coffee-900 text-white p-4 flex items-center justify-between", children: [
+      /* @__PURE__ */ jsxDEV("div", { className: "flex items-center gap-2", children: [
+        /* @__PURE__ */ jsxDEV(CheckCircle2, { className: "w-5 h-5 text-emerald-400" }, void 0, false, {
+          fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/ReceiptInvoice.jsx",
+          lineNumber: 38,
+          columnNumber: 13
+        }, this),
+        /* @__PURE__ */ jsxDEV("span", { className: "text-xs font-bold", children: "Thanh Toán Thành Công" }, void 0, false, {
+          fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/ReceiptInvoice.jsx",
+          lineNumber: 39,
+          columnNumber: 13
+        }, this)
+      ] }, void 0, true, {
+        fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/ReceiptInvoice.jsx",
+        lineNumber: 37,
+        columnNumber: 11
+      }, this),
+      /* @__PURE__ */ jsxDEV("div", { className: "flex items-center gap-2", children: [
+        /* @__PURE__ */ jsxDEV(
+          "button",
+          {
+            onClick: handlePrint,
+            className: "px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-coffee-950 font-bold text-xs rounded-xl flex items-center gap-1.5 transition",
+            children: [
+              /* @__PURE__ */ jsxDEV(Printer, { className: "w-4 h-4" }, void 0, false, {
+                fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/ReceiptInvoice.jsx",
+                lineNumber: 46,
+                columnNumber: 15
+              }, this),
+              " In Hoá Đơn"
+            ]
+          },
+          void 0,
+          true,
+          {
+            fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/ReceiptInvoice.jsx",
+            lineNumber: 42,
+            columnNumber: 13
+          },
+          this
+        ),
+        /* @__PURE__ */ jsxDEV(
+          "button",
+          {
+            onClick: onClose,
+            className: "p-1.5 text-coffee-300 hover:text-white rounded-lg transition",
+            children: /* @__PURE__ */ jsxDEV(X, { className: "w-5 h-5" }, void 0, false, {
+              fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/ReceiptInvoice.jsx",
+              lineNumber: 52,
+              columnNumber: 15
+            }, this)
+          },
+          void 0,
+          false,
+          {
+            fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/ReceiptInvoice.jsx",
+            lineNumber: 48,
+            columnNumber: 13
+          },
+          this
+        )
+      ] }, void 0, true, {
+        fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/ReceiptInvoice.jsx",
+        lineNumber: 41,
+        columnNumber: 11
+      }, this)
+    ] }, void 0, true, {
+      fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/ReceiptInvoice.jsx",
+      lineNumber: 36,
+      columnNumber: 9
+    }, this),
+    /* @__PURE__ */ jsxDEV("div", { className: "p-8 font-mono text-gray-800 text-xs leading-relaxed bg-white", id: "receipt-print-area", children: [
+      /* @__PURE__ */ jsxDEV("div", { className: "text-center pb-4 border-b border-dashed border-gray-300 space-y-1", children: [
+        /* @__PURE__ */ jsxDEV("div", { className: "inline-block p-2 rounded-full bg-coffee-50 mb-1", children: /* @__PURE__ */ jsxDEV(Coffee, { className: "w-8 h-8 text-coffee-800 mx-auto" }, void 0, false, {
+          fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/ReceiptInvoice.jsx",
+          lineNumber: 62,
+          columnNumber: 15
+        }, this) }, void 0, false, {
+          fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/ReceiptInvoice.jsx",
+          lineNumber: 61,
+          columnNumber: 13
+        }, this),
+        /* @__PURE__ */ jsxDEV("h2", { className: "font-extrabold text-sm text-gray-900", children: shopName }, void 0, false, {
+          fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/ReceiptInvoice.jsx",
+          lineNumber: 64,
+          columnNumber: 13
+        }, this),
+        /* @__PURE__ */ jsxDEV("p", { className: "text-[10px] text-gray-500", children: shopAddress }, void 0, false, {
+          fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/ReceiptInvoice.jsx",
+          lineNumber: 65,
+          columnNumber: 13
+        }, this),
+        /* @__PURE__ */ jsxDEV("p", { className: "text-[10px] text-gray-500", children: [
+          "Hotline: ",
+          shopPhone
+        ] }, void 0, true, {
+          fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/ReceiptInvoice.jsx",
+          lineNumber: 66,
+          columnNumber: 13
+        }, this)
+      ] }, void 0, true, {
+        fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/ReceiptInvoice.jsx",
+        lineNumber: 60,
+        columnNumber: 11
+      }, this),
+      /* @__PURE__ */ jsxDEV("div", { className: "py-3 border-b border-dashed border-gray-300 space-y-1 text-[11px]", children: [
+        /* @__PURE__ */ jsxDEV("div", { className: "text-center font-bold text-gray-900 text-xs mb-2", children: "HOÁ ĐƠN THANH TOÁN" }, void 0, false, {
+          fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/ReceiptInvoice.jsx",
+          lineNumber: 71,
+          columnNumber: 13
+        }, this),
+        /* @__PURE__ */ jsxDEV("div", { className: "flex justify-between", children: [
+          /* @__PURE__ */ jsxDEV("span", { children: "Mã HĐ:" }, void 0, false, {
+            fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/ReceiptInvoice.jsx",
+            lineNumber: 75,
+            columnNumber: 15
+          }, this),
+          /* @__PURE__ */ jsxDEV("span", { className: "font-bold", children: order.orderCode }, void 0, false, {
+            fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/ReceiptInvoice.jsx",
+            lineNumber: 76,
+            columnNumber: 15
+          }, this)
+        ] }, void 0, true, {
+          fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/ReceiptInvoice.jsx",
+          lineNumber: 74,
+          columnNumber: 13
+        }, this),
+        /* @__PURE__ */ jsxDEV("div", { className: "flex justify-between", children: [
+          /* @__PURE__ */ jsxDEV("span", { children: "Bàn:" }, void 0, false, {
+            fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/ReceiptInvoice.jsx",
+            lineNumber: 79,
+            columnNumber: 15
+          }, this),
+          /* @__PURE__ */ jsxDEV("span", { className: "font-bold", children: order.tableName }, void 0, false, {
+            fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/ReceiptInvoice.jsx",
+            lineNumber: 80,
+            columnNumber: 15
+          }, this)
+        ] }, void 0, true, {
+          fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/ReceiptInvoice.jsx",
+          lineNumber: 78,
+          columnNumber: 13
+        }, this),
+        /* @__PURE__ */ jsxDEV("div", { className: "flex justify-between", children: [
+          /* @__PURE__ */ jsxDEV("span", { children: "Khách hàng:" }, void 0, false, {
+            fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/ReceiptInvoice.jsx",
+            lineNumber: 83,
+            columnNumber: 15
+          }, this),
+          /* @__PURE__ */ jsxDEV("span", { children: order.customerName || "Khách vãng lai" }, void 0, false, {
+            fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/ReceiptInvoice.jsx",
+            lineNumber: 84,
+            columnNumber: 15
+          }, this)
+        ] }, void 0, true, {
+          fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/ReceiptInvoice.jsx",
+          lineNumber: 82,
+          columnNumber: 13
+        }, this),
+        /* @__PURE__ */ jsxDEV("div", { className: "flex justify-between", children: [
+          /* @__PURE__ */ jsxDEV("span", { children: "Thu ngân:" }, void 0, false, {
+            fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/ReceiptInvoice.jsx",
+            lineNumber: 87,
+            columnNumber: 15
+          }, this),
+          /* @__PURE__ */ jsxDEV("span", { children: order.staffName || "Nhân viên" }, void 0, false, {
+            fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/ReceiptInvoice.jsx",
+            lineNumber: 88,
+            columnNumber: 15
+          }, this)
+        ] }, void 0, true, {
+          fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/ReceiptInvoice.jsx",
+          lineNumber: 86,
+          columnNumber: 13
+        }, this),
+        /* @__PURE__ */ jsxDEV("div", { className: "flex justify-between", children: [
+          /* @__PURE__ */ jsxDEV("span", { children: "Thời gian:" }, void 0, false, {
+            fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/ReceiptInvoice.jsx",
+            lineNumber: 91,
+            columnNumber: 15
+          }, this),
+          /* @__PURE__ */ jsxDEV("span", { children: order.paidAt || (/* @__PURE__ */ new Date()).toLocaleString("vi-VN") }, void 0, false, {
+            fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/ReceiptInvoice.jsx",
+            lineNumber: 92,
+            columnNumber: 15
+          }, this)
+        ] }, void 0, true, {
+          fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/ReceiptInvoice.jsx",
+          lineNumber: 90,
+          columnNumber: 13
+        }, this)
+      ] }, void 0, true, {
+        fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/ReceiptInvoice.jsx",
+        lineNumber: 70,
+        columnNumber: 11
+      }, this),
+      /* @__PURE__ */ jsxDEV("div", { className: "py-3 border-b border-dashed border-gray-300", children: [
+        /* @__PURE__ */ jsxDEV("div", { className: "grid grid-cols-12 font-bold border-b border-gray-200 pb-1 mb-2 text-[10px] uppercase text-gray-500", children: [
+          /* @__PURE__ */ jsxDEV("span", { className: "col-span-6", children: "Tên món" }, void 0, false, {
+            fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/ReceiptInvoice.jsx",
+            lineNumber: 99,
+            columnNumber: 15
+          }, this),
+          /* @__PURE__ */ jsxDEV("span", { className: "col-span-2 text-center", children: "SL" }, void 0, false, {
+            fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/ReceiptInvoice.jsx",
+            lineNumber: 100,
+            columnNumber: 15
+          }, this),
+          /* @__PURE__ */ jsxDEV("span", { className: "col-span-4 text-right", children: "Thành tiền" }, void 0, false, {
+            fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/ReceiptInvoice.jsx",
+            lineNumber: 101,
+            columnNumber: 15
+          }, this)
+        ] }, void 0, true, {
+          fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/ReceiptInvoice.jsx",
+          lineNumber: 98,
+          columnNumber: 13
+        }, this),
+        /* @__PURE__ */ jsxDEV("div", { className: "space-y-2", children: order.items?.map(
+          (item, idx) => /* @__PURE__ */ jsxDEV("div", { className: "grid grid-cols-12 text-[11px]", children: [
+            /* @__PURE__ */ jsxDEV("div", { className: "col-span-6 font-medium text-gray-900", children: [
+              item.itemName,
+              item.note && /* @__PURE__ */ jsxDEV("div", { className: "text-[9px] text-gray-400 italic", children: [
+                "(",
+                item.note,
+                ")"
+              ] }, void 0, true, {
+                fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/ReceiptInvoice.jsx",
+                lineNumber: 110,
+                columnNumber: 19
+              }, this)
+            ] }, void 0, true, {
+              fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/ReceiptInvoice.jsx",
+              lineNumber: 107,
+              columnNumber: 19
+            }, this),
+            /* @__PURE__ */ jsxDEV("div", { className: "col-span-2 text-center", children: item.quantity }, void 0, false, {
+              fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/ReceiptInvoice.jsx",
+              lineNumber: 113,
+              columnNumber: 19
+            }, this),
+            /* @__PURE__ */ jsxDEV("div", { className: "col-span-4 text-right font-bold", children: [
+              item.totalPrice.toLocaleString("vi-VN"),
+              " đ"
+            ] }, void 0, true, {
+              fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/ReceiptInvoice.jsx",
+              lineNumber: 114,
+              columnNumber: 19
+            }, this)
+          ] }, idx, true, {
+            fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/ReceiptInvoice.jsx",
+            lineNumber: 106,
+            columnNumber: 15
+          }, this)
+        ) }, void 0, false, {
+          fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/ReceiptInvoice.jsx",
+          lineNumber: 104,
+          columnNumber: 13
+        }, this)
+      ] }, void 0, true, {
+        fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/ReceiptInvoice.jsx",
+        lineNumber: 97,
+        columnNumber: 11
+      }, this),
+      /* @__PURE__ */ jsxDEV("div", { className: "py-3 border-b border-dashed border-gray-300 space-y-1.5 text-[11px]", children: [
+        /* @__PURE__ */ jsxDEV("div", { className: "flex justify-between", children: [
+          /* @__PURE__ */ jsxDEV("span", { children: "Tổng cộng món:" }, void 0, false, {
+            fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/ReceiptInvoice.jsx",
+            lineNumber: 125,
+            columnNumber: 15
+          }, this),
+          /* @__PURE__ */ jsxDEV("span", { children: [
+            order.totalAmount?.toLocaleString("vi-VN"),
+            " đ"
+          ] }, void 0, true, {
+            fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/ReceiptInvoice.jsx",
+            lineNumber: 126,
+            columnNumber: 15
+          }, this)
+        ] }, void 0, true, {
+          fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/ReceiptInvoice.jsx",
+          lineNumber: 124,
+          columnNumber: 13
+        }, this),
+        order.discountPercent > 0 && /* @__PURE__ */ jsxDEV("div", { className: "flex justify-between text-amber-700", children: [
+          /* @__PURE__ */ jsxDEV("span", { children: [
+            "Giảm giá (",
+            order.discountPercent,
+            "%):"
+          ] }, void 0, true, {
+            fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/ReceiptInvoice.jsx",
+            lineNumber: 130,
+            columnNumber: 17
+          }, this),
+          /* @__PURE__ */ jsxDEV("span", { children: [
+            "-",
+            (order.totalAmount * order.discountPercent / 100).toLocaleString("vi-VN"),
+            " ",
+            "đ"
+          ] }, void 0, true, {
+            fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/ReceiptInvoice.jsx",
+            lineNumber: 131,
+            columnNumber: 17
+          }, this)
+        ] }, void 0, true, {
+          fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/ReceiptInvoice.jsx",
+          lineNumber: 129,
+          columnNumber: 13
+        }, this),
+        /* @__PURE__ */ jsxDEV("div", { className: "flex justify-between text-xs font-extrabold text-gray-900 pt-1.5 border-t border-gray-200", children: [
+          /* @__PURE__ */ jsxDEV("span", { children: "TỔNG KHÁCH TRẢ:" }, void 0, false, {
+            fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/ReceiptInvoice.jsx",
+            lineNumber: 142,
+            columnNumber: 15
+          }, this),
+          /* @__PURE__ */ jsxDEV("span", { className: "text-sm text-coffee-800", children: [
+            order.finalAmount?.toLocaleString("vi-VN"),
+            " đ"
+          ] }, void 0, true, {
+            fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/ReceiptInvoice.jsx",
+            lineNumber: 143,
+            columnNumber: 15
+          }, this)
+        ] }, void 0, true, {
+          fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/ReceiptInvoice.jsx",
+          lineNumber: 141,
+          columnNumber: 13
+        }, this),
+        /* @__PURE__ */ jsxDEV("div", { className: "flex justify-between text-[10px] text-gray-500 pt-1", children: [
+          /* @__PURE__ */ jsxDEV("span", { children: "Hình thức TT:" }, void 0, false, {
+            fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/ReceiptInvoice.jsx",
+            lineNumber: 148,
+            columnNumber: 15
+          }, this),
+          /* @__PURE__ */ jsxDEV("span", { className: "font-bold uppercase", children: order.paymentMethod === "TRANSFER_QR" ? "Chuyển khoản QR" : "Tiền mặt" }, void 0, false, {
+            fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/ReceiptInvoice.jsx",
+            lineNumber: 149,
+            columnNumber: 15
+          }, this)
+        ] }, void 0, true, {
+          fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/ReceiptInvoice.jsx",
+          lineNumber: 147,
+          columnNumber: 13
+        }, this)
+      ] }, void 0, true, {
+        fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/ReceiptInvoice.jsx",
+        lineNumber: 123,
+        columnNumber: 11
+      }, this),
+      /* @__PURE__ */ jsxDEV("div", { className: "pt-4 text-center space-y-1 text-[10px] text-gray-500", children: [
+        /* @__PURE__ */ jsxDEV("p", { className: "font-bold text-gray-700", children: "CẢM ƠN QUÝ KHÁCH VÀ HẸN GẶP LẠI!" }, void 0, false, {
+          fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/ReceiptInvoice.jsx",
+          lineNumber: 157,
+          columnNumber: 13
+        }, this),
+        /* @__PURE__ */ jsxDEV("p", { className: "italic", children: "Wifi: CafePOS_FreePass / Pass: cafepos2026" }, void 0, false, {
+          fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/ReceiptInvoice.jsx",
+          lineNumber: 158,
+          columnNumber: 13
+        }, this)
+      ] }, void 0, true, {
+        fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/ReceiptInvoice.jsx",
+        lineNumber: 156,
+        columnNumber: 11
+      }, this)
+    ] }, void 0, true, {
+      fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/ReceiptInvoice.jsx",
+      lineNumber: 58,
+      columnNumber: 9
+    }, this),
+    /* @__PURE__ */ jsxDEV("div", { className: "no-print p-4 bg-gray-50 border-t border-gray-100 flex justify-end", children: /* @__PURE__ */ jsxDEV(
+      "button",
+      {
+        onClick: onClose,
+        className: "px-5 py-2 bg-gray-800 text-white font-bold text-xs rounded-xl hover:bg-gray-900 transition",
+        children: "Đóng Hoá Đơn"
+      },
+      void 0,
+      false,
+      {
+        fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/ReceiptInvoice.jsx",
+        lineNumber: 164,
+        columnNumber: 11
+      },
+      this
+    ) }, void 0, false, {
+      fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/ReceiptInvoice.jsx",
+      lineNumber: 163,
+      columnNumber: 9
+    }, this)
+  ] }, void 0, true, {
+    fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/ReceiptInvoice.jsx",
+    lineNumber: 34,
+    columnNumber: 7
+  }, this) }, void 0, false, {
+    fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/ReceiptInvoice.jsx",
+    lineNumber: 33,
+    columnNumber: 5
+  }, this);
+}
+_c = ReceiptInvoice;
+var _c;
+$RefreshReg$(_c, "ReceiptInvoice");
+if (import.meta.hot && !inWebWorker) {
+  window.$RefreshReg$ = prevRefreshReg;
+  window.$RefreshSig$ = prevRefreshSig;
+}
+if (import.meta.hot && !inWebWorker) {
+  RefreshRuntime.__hmr_import(import.meta.url).then((currentExports) => {
+    RefreshRuntime.registerExportsForReactRefresh("C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/ReceiptInvoice.jsx", currentExports);
+    import.meta.hot.accept((nextExports) => {
+      if (!nextExports) return;
+      const invalidateMessage = RefreshRuntime.validateRefreshBoundaryAndEnqueueUpdate("C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/ReceiptInvoice.jsx", currentExports, nextExports);
+      if (invalidateMessage) import.meta.hot.invalidate(invalidateMessage);
+    });
+  });
+}
+
+//# sourceMappingURL=data:application/json;base64,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QUFFLFdBQVUsMkJBQTBCLGdEQUF2QztBQUFBO0FBQUE7QUFBQTtBQUFBLGVBQXVFO0FBQUEsUUFDdkUsdUJBQUMsT0FBRSxXQUFVLFVBQVMsMERBQXRCO0FBQUE7QUFBQTtBQUFBO0FBQUEsZUFBZ0U7QUFBQSxXQUZsRTtBQUFBO0FBQUE7QUFBQTtBQUFBLGFBR0E7QUFBQSxTQXJHRjtBQUFBO0FBQUE7QUFBQTtBQUFBLFdBc0dBO0FBQUEsSUFHQSx1QkFBQyxTQUFJLFdBQVUscUVBQ2I7QUFBQSxNQUFDO0FBQUE7QUFBQSxRQUNDLFNBQVMxQjtBQUFBQSxRQUNULFdBQVU7QUFBQSxRQUE0RjtBQUFBO0FBQUEsTUFGeEc7QUFBQTtBQUFBO0FBQUE7QUFBQTtBQUFBO0FBQUE7QUFBQTtBQUFBLElBS0EsS0FORjtBQUFBO0FBQUE7QUFBQTtBQUFBLFdBT0E7QUFBQSxPQXhJRjtBQUFBO0FBQUE7QUFBQTtBQUFBLFNBeUlBLEtBMUlGO0FBQUE7QUFBQTtBQUFBO0FBQUEsU0EySUE7QUFFSjtBQUFDMkIsS0F2SnVCN0I7QUFBYyxJQUFBNkI7QUFBQSxhQUFBQSxJQUFBIiwibmFtZXMiOlsiUmVhY3QiLCJDb2ZmZWUiLCJQcmludGVyIiwiQ2hlY2tDaXJjbGUyIiwiWCIsIlJlY2VpcHRJbnZvaWNlIiwicmVjZWlwdERhdGEiLCJvbkNsb3NlIiwic2hvcE5hbWUiLCJzaG9wQWRkcmVzcyIsInNob3BQaG9uZSIsIm9yZGVyIiwiaGFuZGxlUHJpbnQiLCJ3aW5kb3ciLCJwcmludCIsIm9yZGVyQ29kZSIsInRhYmxlTmFtZSIsImN1c3RvbWVyTmFtZSIsInN0YWZmTmFtZSIsInBhaWRBdCIsIkRhdGUiLCJ0b0xvY2FsZVN0cmluZyIsIml0ZW1zIiwibWFwIiwiaXRlbSIsImlkeCIsIml0ZW1OYW1lIiwibm90ZSIsInF1YW50aXR5IiwidG90YWxQcmljZSIsInRvdGFsQW1vdW50IiwiZGlzY291bnRQZXJjZW50IiwiZmluYWxBbW91bnQiLCJwYXltZW50TWV0aG9kIiwiX2MiXSwiaWdub3JlTGlzdCI6W10sInNvdXJjZXMiOlsiUmVjZWlwdEludm9pY2UuanN4Il0sInNvdXJjZXNDb250ZW50IjpbImltcG9ydCBSZWFjdCBmcm9tICdyZWFjdCc7XG5pbXBvcnQgeyBDb2ZmZWUsIFByaW50ZXIsIENoZWNrQ2lyY2xlMiwgWCB9IGZyb20gJ2x1Y2lkZS1yZWFjdCc7XG5cbmV4cG9ydCBkZWZhdWx0IGZ1bmN0aW9uIFJlY2VpcHRJbnZvaWNlKHsgcmVjZWlwdERhdGEsIG9uQ2xvc2UgfSkge1xuICBpZiAoIXJlY2VpcHREYXRhKSByZXR1cm4gbnVsbDtcblxuICBjb25zdCB7IHNob3BOYW1lLCBzaG9wQWRkcmVzcywgc2hvcFBob25lLCBvcmRlciB9ID0gcmVjZWlwdERhdGE7XG5cbiAgY29uc3QgaGFuZGxlUHJpbnQgPSAoKSA9PiB7XG4gICAgd2luZG93LnByaW50KCk7XG4gIH07XG5cbiAgcmV0dXJuIChcbiAgICA8ZGl2IGNsYXNzTmFtZT1cImZpeGVkIGluc2V0LTAgei01MCBmbGV4IGl0ZW1zLWNlbnRlciBqdXN0aWZ5LWNlbnRlciBiZy1ncmF5LTkwMC84MCBiYWNrZHJvcC1ibHVyLXNtIHAtNCBvdmVyZmxvdy15LWF1dG9cIj5cbiAgICAgIDxkaXYgY2xhc3NOYW1lPVwidy1mdWxsIG1heC13LW1kIGJnLXdoaXRlIHJvdW5kZWQtM3hsIHNoYWRvdy0yeGwgb3ZlcmZsb3ctaGlkZGVuIGJvcmRlciBib3JkZXItZ3JheS0xMDAgbXktOFwiPlxuICAgICAgICB7LyogSGVhZGVyIGJhciAtIG5vIHByaW50ICovfVxuICAgICAgICA8ZGl2IGNsYXNzTmFtZT1cIm5vLXByaW50IGJnLWNvZmZlZS05MDAgdGV4dC13aGl0ZSBwLTQgZmxleCBpdGVtcy1jZW50ZXIganVzdGlmeS1iZXR3ZWVuXCI+XG4gICAgICAgICAgPGRpdiBjbGFzc05hbWU9XCJmbGV4IGl0ZW1zLWNlbnRlciBnYXAtMlwiPlxuICAgICAgICAgICAgPENoZWNrQ2lyY2xlMiBjbGFzc05hbWU9XCJ3LTUgaC01IHRleHQtZW1lcmFsZC00MDBcIiAvPlxuICAgICAgICAgICAgPHNwYW4gY2xhc3NOYW1lPVwidGV4dC14cyBmb250LWJvbGRcIj5UaGFuaCBUb8OhbiBUaMOgbmggQ8O0bmc8L3NwYW4+XG4gICAgICAgICAgPC9kaXY+XG4gICAgICAgICAgPGRpdiBjbGFzc05hbWU9XCJmbGV4IGl0ZW1zLWNlbnRlciBnYXAtMlwiPlxuICAgICAgICAgICAgPGJ1dHRvblxuICAgICAgICAgICAgICBvbkNsaWNrPXtoYW5kbGVQcmludH1cbiAgICAgICAgICAgICAgY2xhc3NOYW1lPVwicHgtMyBweS0xLjUgYmctYW1iZXItNTAwIGhvdmVyOmJnLWFtYmVyLTYwMCB0ZXh0LWNvZmZlZS05NTAgZm9udC1ib2xkIHRleHQteHMgcm91bmRlZC14bCBmbGV4IGl0ZW1zLWNlbnRlciBnYXAtMS41IHRyYW5zaXRpb25cIlxuICAgICAgICAgICAgPlxuICAgICAgICAgICAgICA8UHJpbnRlciBjbGFzc05hbWU9XCJ3LTQgaC00XCIgLz4gSW4gSG/DoSDEkMahblxuICAgICAgICAgICAgPC9idXR0b24+XG4gICAgICAgICAgICA8YnV0dG9uXG4gICAgICAgICAgICAgIG9uQ2xpY2s9e29uQ2xvc2V9XG4gICAgICAgICAgICAgIGNsYXNzTmFtZT1cInAtMS41IHRleHQtY29mZmVlLTMwMCBob3Zlcjp0ZXh0LXdoaXRlIHJvdW5kZWQtbGcgdHJhbnNpdGlvblwiXG4gICAgICAgICAgICA+XG4gICAgICAgICAgICAgIDxYIGNsYXNzTmFtZT1cInctNSBoLTVcIiAvPlxuICAgICAgICAgICAgPC9idXR0b24+XG4gICAgICAgICAgPC9kaXY+XG4gICAgICAgIDwvZGl2PlxuXG4gICAgICAgIHsvKiBQcmludGFibGUgQmlsbCBBcmVhICovfVxuICAgICAgICA8ZGl2IGNsYXNzTmFtZT1cInAtOCBmb250LW1vbm8gdGV4dC1ncmF5LTgwMCB0ZXh0LXhzIGxlYWRpbmctcmVsYXhlZCBiZy13aGl0ZVwiIGlkPVwicmVjZWlwdC1wcmludC1hcmVhXCI+XG4gICAgICAgICAgey8qIFNob3AgSGVhZGVyICovfVxuICAgICAgICAgIDxkaXYgY2xhc3NOYW1lPVwidGV4dC1jZW50ZXIgcGItNCBib3JkZXItYiBib3JkZXItZGFzaGVkIGJvcmRlci1ncmF5LTMwMCBzcGFjZS15LTFcIj5cbiAgICAgICAgICAgIDxkaXYgY2xhc3NOYW1lPVwiaW5saW5lLWJsb2NrIHAtMiByb3VuZGVkLWZ1bGwgYmctY29mZmVlLTUwIG1iLTFcIj5cbiAgICAgICAgICAgICAgPENvZmZlZSBjbGFzc05hbWU9XCJ3LTggaC04IHRleHQtY29mZmVlLTgwMCBteC1hdXRvXCIgLz5cbiAgICAgICAgICAgIDwvZGl2PlxuICAgICAgICAgICAgPGgyIGNsYXNzTmFtZT1cImZvbnQtZXh0cmFib2xkIHRleHQtc20gdGV4dC1ncmF5LTkwMFwiPntzaG9wTmFtZX08L2gyPlxuICAgICAgICAgICAgPHAgY2xhc3NOYW1lPVwidGV4dC1bMTBweF0gdGV4dC1ncmF5LTUwMFwiPntzaG9wQWRkcmVzc308L3A+XG4gICAgICAgICAgICA8cCBjbGFzc05hbWU9XCJ0ZXh0LVsxMHB4XSB0ZXh0LWdyYXktNTAwXCI+SG90bGluZToge3Nob3BQaG9uZX08L3A+XG4gICAgICAgICAgPC9kaXY+XG5cbiAgICAgICAgICB7LyogQmlsbCBNZXRhICovfVxuICAgICAgICAgIDxkaXYgY2xhc3NOYW1lPVwicHktMyBib3JkZXItYiBib3JkZXItZGFzaGVkIGJvcmRlci1ncmF5LTMwMCBzcGFjZS15LTEgdGV4dC1bMTFweF1cIj5cbiAgICAgICAgICAgIDxkaXYgY2xhc3NOYW1lPVwidGV4dC1jZW50ZXIgZm9udC1ib2xkIHRleHQtZ3JheS05MDAgdGV4dC14cyBtYi0yXCI+XG4gICAgICAgICAgICAgIEhPw4EgxJDGoE4gVEhBTkggVE/DgU5cbiAgICAgICAgICAgIDwvZGl2PlxuICAgICAgICAgICAgPGRpdiBjbGFzc05hbWU9XCJmbGV4IGp1c3RpZnktYmV0d2VlblwiPlxuICAgICAgICAgICAgICA8c3Bhbj5Nw6MgSMSQOjwvc3Bhbj5cbiAgICAgICAgICAgICAgPHNwYW4gY2xhc3NOYW1lPVwiZm9udC1ib2xkXCI+e29yZGVyLm9yZGVyQ29kZX08L3NwYW4+XG4gICAgICAgICAgICA8L2Rpdj5cbiAgICAgICAgICAgIDxkaXYgY2xhc3NOYW1lPVwiZmxleCBqdXN0aWZ5LWJldHdlZW5cIj5cbiAgICAgICAgICAgICAgPHNwYW4+QsOgbjo8L3NwYW4+XG4gICAgICAgICAgICAgIDxzcGFuIGNsYXNzTmFtZT1cImZvbnQtYm9sZFwiPntvcmRlci50YWJsZU5hbWV9PC9zcGFuPlxuICAgICAgICAgICAgPC9kaXY+XG4gICAgICAgICAgICA8ZGl2IGNsYXNzTmFtZT1cImZsZXgganVzdGlmeS1iZXR3ZWVuXCI+XG4gICAgICAgICAgICAgIDxzcGFuPktow6FjaCBow6BuZzo8L3NwYW4+XG4gICAgICAgICAgICAgIDxzcGFuPntvcmRlci5jdXN0b21lck5hbWUgfHwgJ0tow6FjaCB2w6NuZyBsYWknfTwvc3Bhbj5cbiAgICAgICAgICAgIDwvZGl2PlxuICAgICAgICAgICAgPGRpdiBjbGFzc05hbWU9XCJmbGV4IGp1c3RpZnktYmV0d2VlblwiPlxuICAgICAgICAgICAgICA8c3Bhbj5UaHUgbmfDom46PC9zcGFuPlxuICAgICAgICAgICAgICA8c3Bhbj57b3JkZXIuc3RhZmZOYW1lIHx8ICdOaMOibiB2acOqbid9PC9zcGFuPlxuICAgICAgICAgICAgPC9kaXY+XG4gICAgICAgICAgICA8ZGl2IGNsYXNzTmFtZT1cImZsZXgganVzdGlmeS1iZXR3ZWVuXCI+XG4gICAgICAgICAgICAgIDxzcGFuPlRo4budaSBnaWFuOjwvc3Bhbj5cbiAgICAgICAgICAgICAgPHNwYW4+e29yZGVyLnBhaWRBdCB8fCBuZXcgRGF0ZSgpLnRvTG9jYWxlU3RyaW5nKCd2aS1WTicpfTwvc3Bhbj5cbiAgICAgICAgICAgIDwvZGl2PlxuICAgICAgICAgIDwvZGl2PlxuXG4gICAgICAgICAgey8qIEl0ZW1zIFRhYmxlICovfVxuICAgICAgICAgIDxkaXYgY2xhc3NOYW1lPVwicHktMyBib3JkZXItYiBib3JkZXItZGFzaGVkIGJvcmRlci1ncmF5LTMwMFwiPlxuICAgICAgICAgICAgPGRpdiBjbGFzc05hbWU9XCJncmlkIGdyaWQtY29scy0xMiBmb250LWJvbGQgYm9yZGVyLWIgYm9yZGVyLWdyYXktMjAwIHBiLTEgbWItMiB0ZXh0LVsxMHB4XSB1cHBlcmNhc2UgdGV4dC1ncmF5LTUwMFwiPlxuICAgICAgICAgICAgICA8c3BhbiBjbGFzc05hbWU9XCJjb2wtc3Bhbi02XCI+VMOqbiBtw7NuPC9zcGFuPlxuICAgICAgICAgICAgICA8c3BhbiBjbGFzc05hbWU9XCJjb2wtc3Bhbi0yIHRleHQtY2VudGVyXCI+U0w8L3NwYW4+XG4gICAgICAgICAgICAgIDxzcGFuIGNsYXNzTmFtZT1cImNvbC1zcGFuLTQgdGV4dC1yaWdodFwiPlRow6BuaCB0aeG7gW48L3NwYW4+XG4gICAgICAgICAgICA8L2Rpdj5cblxuICAgICAgICAgICAgPGRpdiBjbGFzc05hbWU9XCJzcGFjZS15LTJcIj5cbiAgICAgICAgICAgICAge29yZGVyLml0ZW1zPy5tYXAoKGl0ZW0sIGlkeCkgPT4gKFxuICAgICAgICAgICAgICAgIDxkaXYga2V5PXtpZHh9IGNsYXNzTmFtZT1cImdyaWQgZ3JpZC1jb2xzLTEyIHRleHQtWzExcHhdXCI+XG4gICAgICAgICAgICAgICAgICA8ZGl2IGNsYXNzTmFtZT1cImNvbC1zcGFuLTYgZm9udC1tZWRpdW0gdGV4dC1ncmF5LTkwMFwiPlxuICAgICAgICAgICAgICAgICAgICB7aXRlbS5pdGVtTmFtZX1cbiAgICAgICAgICAgICAgICAgICAge2l0ZW0ubm90ZSAmJiAoXG4gICAgICAgICAgICAgICAgICAgICAgPGRpdiBjbGFzc05hbWU9XCJ0ZXh0LVs5cHhdIHRleHQtZ3JheS00MDAgaXRhbGljXCI+KHtpdGVtLm5vdGV9KTwvZGl2PlxuICAgICAgICAgICAgICAgICAgICApfVxuICAgICAgICAgICAgICAgICAgPC9kaXY+XG4gICAgICAgICAgICAgICAgICA8ZGl2IGNsYXNzTmFtZT1cImNvbC1zcGFuLTIgdGV4dC1jZW50ZXJcIj57aXRlbS5xdWFudGl0eX08L2Rpdj5cbiAgICAgICAgICAgICAgICAgIDxkaXYgY2xhc3NOYW1lPVwiY29sLXNwYW4tNCB0ZXh0LXJpZ2h0IGZvbnQtYm9sZFwiPlxuICAgICAgICAgICAgICAgICAgICB7aXRlbS50b3RhbFByaWNlLnRvTG9jYWxlU3RyaW5nKCd2aS1WTicpfSDEkVxuICAgICAgICAgICAgICAgICAgPC9kaXY+XG4gICAgICAgICAgICAgICAgPC9kaXY+XG4gICAgICAgICAgICAgICkpfVxuICAgICAgICAgICAgPC9kaXY+XG4gICAgICAgICAgPC9kaXY+XG5cbiAgICAgICAgICB7LyogVG90YWwgY2FsY3VsYXRpb24gKi99XG4gICAgICAgICAgPGRpdiBjbGFzc05hbWU9XCJweS0zIGJvcmRlci1iIGJvcmRlci1kYXNoZWQgYm9yZGVyLWdyYXktMzAwIHNwYWNlLXktMS41IHRleHQtWzExcHhdXCI+XG4gICAgICAgICAgICA8ZGl2IGNsYXNzTmFtZT1cImZsZXgganVzdGlmeS1iZXR3ZWVuXCI+XG4gICAgICAgICAgICAgIDxzcGFuPlThu5VuZyBj4buZbmcgbcOzbjo8L3NwYW4+XG4gICAgICAgICAgICAgIDxzcGFuPntvcmRlci50b3RhbEFtb3VudD8udG9Mb2NhbGVTdHJpbmcoJ3ZpLVZOJyl9IMSRPC9zcGFuPlxuICAgICAgICAgICAgPC9kaXY+XG4gICAgICAgICAgICB7b3JkZXIuZGlzY291bnRQZXJjZW50ID4gMCAmJiAoXG4gICAgICAgICAgICAgIDxkaXYgY2xhc3NOYW1lPVwiZmxleCBqdXN0aWZ5LWJldHdlZW4gdGV4dC1hbWJlci03MDBcIj5cbiAgICAgICAgICAgICAgICA8c3Bhbj5HaeG6o20gZ2nDoSAoe29yZGVyLmRpc2NvdW50UGVyY2VudH0lKTo8L3NwYW4+XG4gICAgICAgICAgICAgICAgPHNwYW4+XG4gICAgICAgICAgICAgICAgICAtXG4gICAgICAgICAgICAgICAgICB7KFxuICAgICAgICAgICAgICAgICAgICAob3JkZXIudG90YWxBbW91bnQgKiBvcmRlci5kaXNjb3VudFBlcmNlbnQpIC9cbiAgICAgICAgICAgICAgICAgICAgMTAwXG4gICAgICAgICAgICAgICAgICApLnRvTG9jYWxlU3RyaW5nKCd2aS1WTicpfXsnICd9XG4gICAgICAgICAgICAgICAgICDEkVxuICAgICAgICAgICAgICAgIDwvc3Bhbj5cbiAgICAgICAgICAgICAgPC9kaXY+XG4gICAgICAgICAgICApfVxuICAgICAgICAgICAgPGRpdiBjbGFzc05hbWU9XCJmbGV4IGp1c3RpZnktYmV0d2VlbiB0ZXh0LXhzIGZvbnQtZXh0cmFib2xkIHRleHQtZ3JheS05MDAgcHQtMS41IGJvcmRlci10IGJvcmRlci1ncmF5LTIwMFwiPlxuICAgICAgICAgICAgICA8c3Bhbj5U4buUTkcgS0jDgUNIIFRS4bqiOjwvc3Bhbj5cbiAgICAgICAgICAgICAgPHNwYW4gY2xhc3NOYW1lPVwidGV4dC1zbSB0ZXh0LWNvZmZlZS04MDBcIj5cbiAgICAgICAgICAgICAgICB7b3JkZXIuZmluYWxBbW91bnQ/LnRvTG9jYWxlU3RyaW5nKCd2aS1WTicpfSDEkVxuICAgICAgICAgICAgICA8L3NwYW4+XG4gICAgICAgICAgICA8L2Rpdj5cbiAgICAgICAgICAgIDxkaXYgY2xhc3NOYW1lPVwiZmxleCBqdXN0aWZ5LWJldHdlZW4gdGV4dC1bMTBweF0gdGV4dC1ncmF5LTUwMCBwdC0xXCI+XG4gICAgICAgICAgICAgIDxzcGFuPkjDrG5oIHRo4bupYyBUVDo8L3NwYW4+XG4gICAgICAgICAgICAgIDxzcGFuIGNsYXNzTmFtZT1cImZvbnQtYm9sZCB1cHBlcmNhc2VcIj5cbiAgICAgICAgICAgICAgICB7b3JkZXIucGF5bWVudE1ldGhvZCA9PT0gJ1RSQU5TRkVSX1FSJyA/ICdDaHV54buDbiBraG/huqNuIFFSJyA6ICdUaeG7gW4gbeG6t3QnfVxuICAgICAgICAgICAgICA8L3NwYW4+XG4gICAgICAgICAgICA8L2Rpdj5cbiAgICAgICAgICA8L2Rpdj5cblxuICAgICAgICAgIHsvKiBGb290ZXIgbm90ZSAqL31cbiAgICAgICAgICA8ZGl2IGNsYXNzTmFtZT1cInB0LTQgdGV4dC1jZW50ZXIgc3BhY2UteS0xIHRleHQtWzEwcHhdIHRleHQtZ3JheS01MDBcIj5cbiAgICAgICAgICAgIDxwIGNsYXNzTmFtZT1cImZvbnQtYm9sZCB0ZXh0LWdyYXktNzAwXCI+Q+G6ok0gxqBOIFFVw50gS0jDgUNIIFbDgCBI4bq4TiBH4bq2UCBM4bqgSSE8L3A+XG4gICAgICAgICAgICA8cCBjbGFzc05hbWU9XCJpdGFsaWNcIj5XaWZpOiBDYWZlUE9TX0ZyZWVQYXNzIC8gUGFzczogY2FmZXBvczIwMjY8L3A+XG4gICAgICAgICAgPC9kaXY+XG4gICAgICAgIDwvZGl2PlxuXG4gICAgICAgIHsvKiBGb290ZXIgYWN0aW9ucyAtIG5vIHByaW50ICovfVxuICAgICAgICA8ZGl2IGNsYXNzTmFtZT1cIm5vLXByaW50IHAtNCBiZy1ncmF5LTUwIGJvcmRlci10IGJvcmRlci1ncmF5LTEwMCBmbGV4IGp1c3RpZnktZW5kXCI+XG4gICAgICAgICAgPGJ1dHRvblxuICAgICAgICAgICAgb25DbGljaz17b25DbG9zZX1cbiAgICAgICAgICAgIGNsYXNzTmFtZT1cInB4LTUgcHktMiBiZy1ncmF5LTgwMCB0ZXh0LXdoaXRlIGZvbnQtYm9sZCB0ZXh0LXhzIHJvdW5kZWQteGwgaG92ZXI6YmctZ3JheS05MDAgdHJhbnNpdGlvblwiXG4gICAgICAgICAgPlxuICAgICAgICAgICAgxJDDs25nIEhvw6EgxJDGoW5cbiAgICAgICAgICA8L2J1dHRvbj5cbiAgICAgICAgPC9kaXY+XG4gICAgICA8L2Rpdj5cbiAgICA8L2Rpdj5cbiAgKTtcbn1cbiJdLCJmaWxlIjoiQzovVXNlcnMvTGVub3ZvL0Rvd25sb2Fkcy90aHUgbXVjIGxhbSB2aWVjIGFnZW50L2Zyb250ZW5kL3NyYy9jb21wb25lbnRzL1JlY2VpcHRJbnZvaWNlLmpzeCJ9

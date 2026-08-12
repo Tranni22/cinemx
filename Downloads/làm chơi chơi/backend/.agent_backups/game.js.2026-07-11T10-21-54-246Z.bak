@@ -1,0 +1,114 @@
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+
+const ROWS = 5;
+const COLS = 9;
+const CELL_SIZE = 80;
+
+canvas.width = COLS * CELL_SIZE;
+canvas.height = ROWS * CELL_SIZE;
+
+class Plant {
+    constructor(row, col) {
+        this.row = row;
+        this.col = col;
+        this.health = 100;
+        this.lastShot = 0;
+    }
+    draw() {
+        ctx.fillStyle = '#FFD700'; // Gold
+        ctx.beginPath();
+        ctx.arc(this.col * CELL_SIZE + CELL_SIZE/2, this.row * CELL_SIZE + CELL_SIZE/2, 25, 0, Math.PI*2);
+        ctx.fill();
+    }
+}
+
+class Zombie {
+    constructor(row) {
+        this.row = row;
+        this.x = canvas.width;
+        this.health = 100;
+    }
+    draw() {
+        ctx.fillStyle = '#8B4513'; // SaddleBrown
+        ctx.fillRect(this.x, this.row * CELL_SIZE + 10, 50, 60);
+    }
+    update() {
+        this.x -= 0.3;
+    }
+}
+
+class Projectile {
+    constructor(row, x) {
+        this.row = row;
+        this.x = x;
+        this.y = row * CELL_SIZE + CELL_SIZE/2;
+    }
+    draw() {
+        ctx.fillStyle = '#32CD32'; // LimeGreen
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, 8, 0, Math.PI*2);
+        ctx.fill();
+    }
+    update() {
+        this.x += 2;
+    }
+}
+
+let plants = [];
+let zombies = [];
+let projectiles = [];
+
+canvas.addEventListener('click', (e) => {
+    const rect = canvas.getBoundingClientRect();
+    const col = Math.floor((e.clientX - rect.left) / CELL_SIZE);
+    const row = Math.floor((e.clientY - rect.top) / CELL_SIZE);
+    if (row >= 0 && row < ROWS && col >= 0 && col < COLS) {
+        plants.push(new Plant(row, col));
+    }
+});
+
+function update() {
+    if (Math.random() < 0.005) zombies.push(new Zombie(Math.floor(Math.random() * ROWS)));
+    
+    plants.forEach(p => {
+        if (Date.now() - p.lastShot > 1500) {
+            projectiles.push(new Projectile(p.row, p.col * CELL_SIZE + CELL_SIZE));
+            p.lastShot = Date.now();
+        }
+    });
+
+    zombies.forEach(z => z.update());
+    projectiles.forEach(p => p.update());
+    
+    // Collision: projectile hit zombie
+    projectiles.forEach((p, pIdx) => {
+        zombies.forEach((z, zIdx) => {
+            if (p.x > z.x && p.x < z.x + 50 && p.row === z.row) {
+                z.health -= 20;
+                projectiles.splice(pIdx, 1);
+            }
+        });
+    });
+    
+    zombies = zombies.filter(z => z.health > 0 && z.x > -50);
+}
+
+function draw() {
+    ctx.fillStyle = '#228B22';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    
+    // Draw Grid
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+    for(let i=0; i<=ROWS; i++) { ctx.beginPath(); ctx.moveTo(0, i*CELL_SIZE); ctx.lineTo(canvas.width, i*CELL_SIZE); ctx.stroke(); }
+    for(let j=0; j<=COLS; j++) { ctx.beginPath(); ctx.moveTo(j*CELL_SIZE, 0); ctx.lineTo(j*CELL_SIZE, canvas.height); ctx.stroke(); }
+
+    plants.forEach(p => p.draw());
+    zombies.forEach(z => z.draw());
+    projectiles.forEach(p => p.draw());
+
+    update();
+    requestAnimationFrame(draw);
+}
+
+draw();

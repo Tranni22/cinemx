@@ -1,0 +1,64 @@
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+
+const ROWS = 5;
+const COLS = 9;
+const CELL_SIZE = 80;
+
+canvas.width = COLS * CELL_SIZE;
+canvas.height = ROWS * CELL_SIZE;
+
+let plants = [];
+let zombies = [];
+
+// Click to plant
+canvas.addEventListener('click', (e) => {
+    const rect = canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    const col = Math.floor(x / CELL_SIZE);
+    const row = Math.floor(y / CELL_SIZE);
+
+    if (row >= 0 && row < ROWS && col >= 0 && col < COLS) {
+        plants.push({ row, col });
+    }
+});
+
+function update() {
+    // Spawn zombie
+    if (Math.random() < 0.01) {
+        zombies.push({ x: canvas.width, row: Math.floor(Math.random() * ROWS) });
+    }
+
+    // Move zombies
+    zombies.forEach(z => z.x -= 0.5);
+    // Remove zombies off screen
+    zombies = zombies.filter(z => z.x > -60);
+}
+
+function draw() {
+    ctx.fillStyle = '#228B22'; // Grass
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // Draw grid
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+    for(let i=0; i<=ROWS; i++) {
+        ctx.beginPath(); ctx.moveTo(0, i*CELL_SIZE); ctx.lineTo(canvas.width, i*CELL_SIZE); ctx.stroke();
+    }
+    for(let j=0; j<=COLS; j++) {
+        ctx.beginPath(); ctx.moveTo(j*CELL_SIZE, 0); ctx.lineTo(j*CELL_SIZE, canvas.height); ctx.stroke();
+    }
+
+    // Draw plants
+    ctx.fillStyle = 'yellow';
+    plants.forEach(p => ctx.fillRect(p.col * CELL_SIZE + 10, p.row * CELL_SIZE + 10, CELL_SIZE - 20, CELL_SIZE - 20));
+
+    // Draw zombies
+    ctx.fillStyle = 'red';
+    zombies.forEach(z => ctx.fillRect(z.x, z.row * CELL_SIZE + 10, 60, 60));
+
+    update();
+    requestAnimationFrame(draw);
+}
+
+draw();

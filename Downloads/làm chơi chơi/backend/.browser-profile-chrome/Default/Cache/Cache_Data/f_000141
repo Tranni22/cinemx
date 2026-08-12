@@ -1,0 +1,365 @@
+import { createHotContext as __vite__createHotContext } from "/@vite/client";import.meta.hot = __vite__createHotContext("/src/components/TableMap.jsx");import __vite__cjsImport0_react_jsxDevRuntime from "/node_modules/.vite/deps/react_jsx-dev-runtime.js?v=40bcafeb"; const jsxDEV = __vite__cjsImport0_react_jsxDevRuntime["jsxDEV"];
+import * as RefreshRuntime from "/@react-refresh";
+const inWebWorker = typeof WorkerGlobalScope !== "undefined" && self instanceof WorkerGlobalScope;
+let prevRefreshReg;
+let prevRefreshSig;
+if (import.meta.hot && !inWebWorker) {
+  if (!window.$RefreshReg$) {
+    throw new Error(
+      "@vitejs/plugin-react can't detect preamble. Something is wrong."
+    );
+  }
+  prevRefreshReg = window.$RefreshReg$;
+  prevRefreshSig = window.$RefreshSig$;
+  window.$RefreshReg$ = RefreshRuntime.getRefreshReg("C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/TableMap.jsx");
+  window.$RefreshSig$ = RefreshRuntime.createSignatureFunctionForTransform;
+}
+var _s = $RefreshSig$();
+import __vite__cjsImport3_react from "/node_modules/.vite/deps/react.js?v=40bcafeb"; const React = __vite__cjsImport3_react.__esModule ? __vite__cjsImport3_react.default : __vite__cjsImport3_react; const useState = __vite__cjsImport3_react["useState"]; const useEffect = __vite__cjsImport3_react["useEffect"];
+import { apiService } from "/src/services/api.js";
+import { SkeletonTableGrid } from "/src/components/SkeletonLoader.jsx";
+import { Users, Plus, CreditCard, RefreshCw, Coffee, AlertCircle, Clock } from "/node_modules/.vite/deps/lucide-react.js?v=40bcafeb";
+export default function TableMap({ onSelectTable, onCheckoutTable }) {
+  _s();
+  const cachedData = apiService.getCachedTables()?.data;
+  const [tables, setTables] = useState(cachedData || []);
+  const [loading, setLoading] = useState(!cachedData || cachedData.length === 0);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [selectedArea, setSelectedArea] = useState("ALL");
+  const [error, setError] = useState("");
+  const loadTables = async (isBackground = false) => {
+    if (!isBackground) {
+      if (tables.length === 0) setLoading(true);
+      else
+        setIsRefreshing(true);
+    }
+    try {
+      const res = await apiService.getTables();
+      if (res.success) {
+        setTables(res.data || []);
+      }
+    } catch (err) {
+      setError("Lỗi tải danh sách bàn!");
+    } finally {
+      setLoading(false);
+      setIsRefreshing(false);
+    }
+  };
+  useEffect(() => {
+    loadTables(tables.length > 0);
+    const interval = setInterval(() => loadTables(true), 5e3);
+    return () => clearInterval(interval);
+  }, []);
+  const areas = ["ALL", ...new Set((tables || []).map((t) => t.area))];
+  const filteredTables = selectedArea === "ALL" ? tables || [] : (tables || []).filter((t) => t.area === selectedArea);
+  const emptyCount = (tables || []).filter((t) => t.status === "EMPTY").length;
+  const servingCount = (tables || []).filter((t) => t.status === "SERVING").length;
+  return /* @__PURE__ */ jsxDEV("div", { className: "space-y-5 pb-16 md:pb-0", children: [
+    /* @__PURE__ */ jsxDEV("div", { className: "flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-5 rounded-2xl border border-gray-100 shadow-sm", children: [
+      /* @__PURE__ */ jsxDEV("div", { children: [
+        /* @__PURE__ */ jsxDEV("h2", { className: "text-xl font-bold text-gray-900 flex items-center gap-2", children: [
+          /* @__PURE__ */ jsxDEV(Coffee, { className: "w-6 h-6 text-coffee-600" }, void 0, false, {
+            fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/TableMap.jsx",
+            lineNumber: 70,
+            columnNumber: 13
+          }, this),
+          "Sơ đồ bàn"
+        ] }, void 0, true, {
+          fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/TableMap.jsx",
+          lineNumber: 69,
+          columnNumber: 11
+        }, this),
+        /* @__PURE__ */ jsxDEV("p", { className: "text-sm text-gray-500 mt-0.5", children: "Chọn bàn để gọi món hoặc thực hiện thanh toán" }, void 0, false, {
+          fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/TableMap.jsx",
+          lineNumber: 73,
+          columnNumber: 11
+        }, this)
+      ] }, void 0, true, {
+        fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/TableMap.jsx",
+        lineNumber: 68,
+        columnNumber: 9
+      }, this),
+      /* @__PURE__ */ jsxDEV("div", { className: "flex items-center gap-3", children: [
+        /* @__PURE__ */ jsxDEV("div", { className: "flex items-center gap-2 px-3.5 py-1.5 bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-xl text-xs font-semibold", children: [
+          /* @__PURE__ */ jsxDEV("span", { className: "w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" }, void 0, false, {
+            fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/TableMap.jsx",
+            lineNumber: 78,
+            columnNumber: 13
+          }, this),
+          /* @__PURE__ */ jsxDEV("span", { children: [
+            "Trống: ",
+            emptyCount,
+            " bàn"
+          ] }, void 0, true, {
+            fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/TableMap.jsx",
+            lineNumber: 79,
+            columnNumber: 13
+          }, this)
+        ] }, void 0, true, {
+          fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/TableMap.jsx",
+          lineNumber: 77,
+          columnNumber: 11
+        }, this),
+        /* @__PURE__ */ jsxDEV("div", { className: "flex items-center gap-2 px-3.5 py-1.5 bg-amber-50 border border-amber-200 text-amber-800 rounded-xl text-xs font-semibold", children: [
+          /* @__PURE__ */ jsxDEV("span", { className: "w-2.5 h-2.5 rounded-full bg-amber-500" }, void 0, false, {
+            fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/TableMap.jsx",
+            lineNumber: 83,
+            columnNumber: 13
+          }, this),
+          /* @__PURE__ */ jsxDEV("span", { children: [
+            "Đang phục vụ: ",
+            servingCount,
+            " bàn"
+          ] }, void 0, true, {
+            fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/TableMap.jsx",
+            lineNumber: 84,
+            columnNumber: 13
+          }, this)
+        ] }, void 0, true, {
+          fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/TableMap.jsx",
+          lineNumber: 82,
+          columnNumber: 11
+        }, this),
+        /* @__PURE__ */ jsxDEV(
+          "button",
+          {
+            onClick: () => loadTables(false),
+            title: "Tải lại sơ đồ",
+            className: "p-2 hover:bg-gray-100 rounded-xl text-gray-600 transition",
+            children: /* @__PURE__ */ jsxDEV(RefreshCw, { className: `w-5 h-5 ${isRefreshing || loading ? "animate-spin text-coffee-600" : ""}` }, void 0, false, {
+              fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/TableMap.jsx",
+              lineNumber: 92,
+              columnNumber: 13
+            }, this)
+          },
+          void 0,
+          false,
+          {
+            fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/TableMap.jsx",
+            lineNumber: 87,
+            columnNumber: 11
+          },
+          this
+        )
+      ] }, void 0, true, {
+        fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/TableMap.jsx",
+        lineNumber: 76,
+        columnNumber: 9
+      }, this)
+    ] }, void 0, true, {
+      fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/TableMap.jsx",
+      lineNumber: 67,
+      columnNumber: 7
+    }, this),
+    /* @__PURE__ */ jsxDEV("div", { className: "flex items-center gap-2 overflow-x-auto pb-1", children: areas.map(
+      (area) => /* @__PURE__ */ jsxDEV(
+        "button",
+        {
+          onClick: () => setSelectedArea(area),
+          className: `px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition ${selectedArea === area ? "bg-coffee-800 text-amber-200 shadow-md" : "bg-white text-gray-600 hover:bg-gray-100 border border-gray-200"}`,
+          children: area === "ALL" ? "🗺️ Tất cả khu vực" : `📍 ${area}`
+        },
+        area,
+        false,
+        {
+          fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/TableMap.jsx",
+          lineNumber: 100,
+          columnNumber: 9
+        },
+        this
+      )
+    ) }, void 0, false, {
+      fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/TableMap.jsx",
+      lineNumber: 98,
+      columnNumber: 7
+    }, this),
+    loading && tables.length === 0 ? /* @__PURE__ */ jsxDEV(SkeletonTableGrid, { count: 12 }, void 0, false, {
+      fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/TableMap.jsx",
+      lineNumber: 116,
+      columnNumber: 7
+    }, this) : /* @__PURE__ */ jsxDEV("div", { className: "grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2.5 sm:gap-4", children: filteredTables.map((table) => {
+      const isServing = table.status === "SERVING";
+      const order = table.currentOrder;
+      return /* @__PURE__ */ jsxDEV(
+        "div",
+        {
+          className: `relative rounded-2xl p-3 sm:p-4 border transition-all duration-200 flex flex-col justify-between min-h-[160px] h-auto shadow-sm hover:shadow-md ${isServing ? "bg-gradient-to-br from-amber-50 to-orange-50 border-amber-300 ring-2 ring-amber-400/20" : "bg-white border-gray-200 hover:border-coffee-500 hover:bg-coffee-50/20"}`,
+          children: [
+            /* @__PURE__ */ jsxDEV("div", { className: "flex items-center justify-between", children: [
+              /* @__PURE__ */ jsxDEV(
+                "span",
+                {
+                  className: `text-[10px] uppercase font-bold px-2 py-0.5 rounded-full border ${isServing ? "bg-amber-100 text-amber-800 border-amber-300" : "bg-emerald-50 text-emerald-700 border-emerald-200"}`,
+                  children: isServing ? "Đang dùng" : "Bàn trống"
+                },
+                void 0,
+                false,
+                {
+                  fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/TableMap.jsx",
+                  lineNumber: 134,
+                  columnNumber: 19
+                },
+                this
+              ),
+              /* @__PURE__ */ jsxDEV("span", { className: "text-[11px] text-gray-400 flex items-center gap-1 font-medium", children: [
+                /* @__PURE__ */ jsxDEV(Users, { className: "w-3 h-3" }, void 0, false, {
+                  fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/TableMap.jsx",
+                  lineNumber: 144,
+                  columnNumber: 21
+                }, this),
+                " ",
+                table.seats
+              ] }, void 0, true, {
+                fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/TableMap.jsx",
+                lineNumber: 143,
+                columnNumber: 19
+              }, this)
+            ] }, void 0, true, {
+              fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/TableMap.jsx",
+              lineNumber: 133,
+              columnNumber: 17
+            }, this),
+            /* @__PURE__ */ jsxDEV("div", { className: "my-2 text-center", children: [
+              /* @__PURE__ */ jsxDEV("h3", { className: "text-lg font-bold text-gray-800", children: table.name }, void 0, false, {
+                fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/TableMap.jsx",
+                lineNumber: 150,
+                columnNumber: 19
+              }, this),
+              /* @__PURE__ */ jsxDEV("p", { className: "text-[11px] text-gray-500 font-medium", children: table.area }, void 0, false, {
+                fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/TableMap.jsx",
+                lineNumber: 151,
+                columnNumber: 19
+              }, this),
+              isServing && order && /* @__PURE__ */ jsxDEV("div", { className: "mt-1.5 inline-block bg-amber-200/60 px-2 py-1 rounded-lg text-amber-900 font-extrabold text-xs", children: [
+                (order?.totalAmount || 0).toLocaleString("vi-VN"),
+                " đ"
+              ] }, void 0, true, {
+                fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/TableMap.jsx",
+                lineNumber: 154,
+                columnNumber: 17
+              }, this)
+            ] }, void 0, true, {
+              fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/TableMap.jsx",
+              lineNumber: 149,
+              columnNumber: 17
+            }, this),
+            /* @__PURE__ */ jsxDEV("div", { className: "mt-auto pt-2 border-t border-gray-100/80", children: isServing ? /* @__PURE__ */ jsxDEV("div", { className: "grid grid-cols-2 gap-1.5", children: [
+              /* @__PURE__ */ jsxDEV(
+                "button",
+                {
+                  onClick: () => onSelectTable(table),
+                  className: "w-full py-1.5 bg-white border border-amber-300 text-amber-900 font-bold text-[11px] rounded-lg hover:bg-amber-100 transition flex items-center justify-center gap-1",
+                  children: [
+                    /* @__PURE__ */ jsxDEV(Plus, { className: "w-3 h-3" }, void 0, false, {
+                      fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/TableMap.jsx",
+                      lineNumber: 168,
+                      columnNumber: 25
+                    }, this),
+                    " Gọi"
+                  ]
+                },
+                void 0,
+                true,
+                {
+                  fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/TableMap.jsx",
+                  lineNumber: 164,
+                  columnNumber: 23
+                },
+                this
+              ),
+              /* @__PURE__ */ jsxDEV(
+                "button",
+                {
+                  onClick: () => onCheckoutTable(table, order),
+                  className: "w-full py-1.5 bg-coffee-700 hover:bg-coffee-800 text-white font-bold text-[11px] rounded-lg shadow transition flex items-center justify-center gap-1",
+                  children: [
+                    /* @__PURE__ */ jsxDEV(CreditCard, { className: "w-3 h-3" }, void 0, false, {
+                      fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/TableMap.jsx",
+                      lineNumber: 174,
+                      columnNumber: 25
+                    }, this),
+                    " Tính"
+                  ]
+                },
+                void 0,
+                true,
+                {
+                  fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/TableMap.jsx",
+                  lineNumber: 170,
+                  columnNumber: 23
+                },
+                this
+              )
+            ] }, void 0, true, {
+              fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/TableMap.jsx",
+              lineNumber: 163,
+              columnNumber: 17
+            }, this) : /* @__PURE__ */ jsxDEV(
+              "button",
+              {
+                onClick: () => onSelectTable(table),
+                className: "w-full py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-lg shadow-sm transition flex items-center justify-center gap-1",
+                children: [
+                  /* @__PURE__ */ jsxDEV(Plus, { className: "w-3.5 h-3.5" }, void 0, false, {
+                    fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/TableMap.jsx",
+                    lineNumber: 182,
+                    columnNumber: 23
+                  }, this),
+                  " Mở Bàn"
+                ]
+              },
+              void 0,
+              true,
+              {
+                fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/TableMap.jsx",
+                lineNumber: 178,
+                columnNumber: 17
+              },
+              this
+            ) }, void 0, false, {
+              fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/TableMap.jsx",
+              lineNumber: 161,
+              columnNumber: 17
+            }, this)
+          ]
+        },
+        table.id,
+        true,
+        {
+          fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/TableMap.jsx",
+          lineNumber: 124,
+          columnNumber: 13
+        },
+        this
+      );
+    }) }, void 0, false, {
+      fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/TableMap.jsx",
+      lineNumber: 118,
+      columnNumber: 7
+    }, this)
+  ] }, void 0, true, {
+    fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/TableMap.jsx",
+    lineNumber: 65,
+    columnNumber: 5
+  }, this);
+}
+_s(TableMap, "OEAi0od6Gq3D1KeFox9DWs8MAQg=");
+_c = TableMap;
+var _c;
+$RefreshReg$(_c, "TableMap");
+if (import.meta.hot && !inWebWorker) {
+  window.$RefreshReg$ = prevRefreshReg;
+  window.$RefreshSig$ = prevRefreshSig;
+}
+if (import.meta.hot && !inWebWorker) {
+  RefreshRuntime.__hmr_import(import.meta.url).then((currentExports) => {
+    RefreshRuntime.registerExportsForReactRefresh("C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/TableMap.jsx", currentExports);
+    import.meta.hot.accept((nextExports) => {
+      if (!nextExports) return;
+      const invalidateMessage = RefreshRuntime.validateRefreshBoundaryAndEnqueueUpdate("C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/TableMap.jsx", currentExports, nextExports);
+      if (invalidateMessage) import.meta.hot.invalidate(invalidateMessage);
+    });
+  });
+}
+
+//# sourceMappingURL=data:application/json;base64,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LFFBNURLQSxNQUFNUTtBQUFBQSxRQURiO0FBQUE7QUFBQTtBQUFBO0FBQUE7QUFBQTtBQUFBO0FBQUEsTUE4REE7QUFBQSxJQUVKLENBQUMsS0F0RUg7QUFBQTtBQUFBO0FBQUE7QUFBQSxXQXVFQTtBQUFBLE9BNUhKO0FBQUE7QUFBQTtBQUFBO0FBQUEsU0E4SEE7QUFFSjtBQUFDMUMsR0F4S3VCSCxVQUFRO0FBQUEsS0FBUkE7QUFBUSxJQUFBOEM7QUFBQSxhQUFBQSxJQUFBIiwibmFtZXMiOlsiUmVhY3QiLCJ1c2VTdGF0ZSIsInVzZUVmZmVjdCIsImFwaVNlcnZpY2UiLCJTa2VsZXRvblRhYmxlR3JpZCIsIlVzZXJzIiwiUGx1cyIsIkNyZWRpdENhcmQiLCJSZWZyZXNoQ3ciLCJDb2ZmZWUiLCJBbGVydENpcmNsZSIsIkNsb2NrIiwiVGFibGVNYXAiLCJvblNlbGVjdFRhYmxlIiwib25DaGVja291dFRhYmxlIiwiX3MiLCJjYWNoZWREYXRhIiwiZ2V0Q2FjaGVkVGFibGVzIiwiZGF0YSIsInRhYmxlcyIsInNldFRhYmxlcyIsImxvYWRpbmciLCJzZXRMb2FkaW5nIiwibGVuZ3RoIiwiaXNSZWZyZXNoaW5nIiwic2V0SXNSZWZyZXNoaW5nIiwic2VsZWN0ZWRBcmVhIiwic2V0U2VsZWN0ZWRBcmVhIiwiZXJyb3IiLCJzZXRFcnJvciIsImxvYWRUYWJsZXMiLCJpc0JhY2tncm91bmQiLCJyZXMiLCJnZXRUYWJsZXMiLCJzdWNjZXNzIiwiZXJyIiwiaW50ZXJ2YWwiLCJzZXRJbnRlcnZhbCIsImNsZWFySW50ZXJ2YWwiLCJhcmVhcyIsIlNldCIsIm1hcCIsInQiLCJhcmVhIiwiZmlsdGVyZWRUYWJsZXMiLCJmaWx0ZXIiLCJlbXB0eUNvdW50Iiwic3RhdHVzIiwic2VydmluZ0NvdW50IiwidGFibGUiLCJpc1NlcnZpbmciLCJvcmRlciIsImN1cnJlbnRPcmRlciIsInNlYXRzIiwibmFtZSIsInRvdGFsQW1vdW50IiwidG9Mb2NhbGVTdHJpbmciLCJpZCIsIl9jIl0sImlnbm9yZUxpc3QiOltdLCJzb3VyY2VzIjpbIlRhYmxlTWFwLmpzeCJdLCJzb3VyY2VzQ29udGVudCI6WyJpbXBvcnQgUmVhY3QsIHsgdXNlU3RhdGUsIHVzZUVmZmVjdCB9IGZyb20gJ3JlYWN0JztcbmltcG9ydCB7IGFwaVNlcnZpY2UgfSBmcm9tICcuLi9zZXJ2aWNlcy9hcGknO1xuaW1wb3J0IHsgU2tlbGV0b25UYWJsZUdyaWQgfSBmcm9tICcuL1NrZWxldG9uTG9hZGVyJztcbmltcG9ydCB7IFVzZXJzLCBQbHVzLCBDcmVkaXRDYXJkLCBSZWZyZXNoQ3csIENvZmZlZSwgQWxlcnRDaXJjbGUsIENsb2NrIH0gZnJvbSAnbHVjaWRlLXJlYWN0JztcblxuZXhwb3J0IGRlZmF1bHQgZnVuY3Rpb24gVGFibGVNYXAoeyBvblNlbGVjdFRhYmxlLCBvbkNoZWNrb3V0VGFibGUgfSkge1xuICBjb25zdCBjYWNoZWREYXRhID0gYXBpU2VydmljZS5nZXRDYWNoZWRUYWJsZXMoKT8uZGF0YTtcbiAgY29uc3QgW3RhYmxlcywgc2V0VGFibGVzXSA9IHVzZVN0YXRlKGNhY2hlZERhdGEgfHwgW10pO1xuICBjb25zdCBbbG9hZGluZywgc2V0TG9hZGluZ10gPSB1c2VTdGF0ZSghY2FjaGVkRGF0YSB8fCBjYWNoZWREYXRhLmxlbmd0aCA9PT0gMCk7XG4gIGNvbnN0IFtpc1JlZnJlc2hpbmcsIHNldElzUmVmcmVzaGluZ10gPSB1c2VTdGF0ZShmYWxzZSk7XG4gIGNvbnN0IFtzZWxlY3RlZEFyZWEsIHNldFNlbGVjdGVkQXJlYV0gPSB1c2VTdGF0ZSgnQUxMJyk7XG4gIGNvbnN0IFtlcnJvciwgc2V0RXJyb3JdID0gdXNlU3RhdGUoJycpO1xuXG4gIGNvbnN0IGxvYWRUYWJsZXMgPSBhc3luYyAoaXNCYWNrZ3JvdW5kID0gZmFsc2UpID0+IHtcbiAgICBpZiAoIWlzQmFja2dyb3VuZCkge1xuICAgICAgaWYgKHRhYmxlcy5sZW5ndGggPT09IDApIHNldExvYWRpbmcodHJ1ZSk7XG4gICAgICBlbHNlIHNldElzUmVmcmVzaGluZyh0cnVlKTtcbiAgICB9XG4gICAgdHJ5IHtcbiAgICAgIGNvbnN0IHJlcyA9IGF3YWl0IGFwaVNlcnZpY2UuZ2V0VGFibGVzKCk7XG4gICAgICBpZiAocmVzLnN1Y2Nlc3MpIHtcbiAgICAgICAgc2V0VGFibGVzKHJlcy5kYXRhIHx8IFtdKTtcbiAgICAgIH1cbiAgICB9IGNhdGNoIChlcnIpIHtcbiAgICAgIHNldEVycm9yKCdM4buXaSB04bqjaSBkYW5oIHPDoWNoIGLDoG4hJyk7XG4gICAgfSBmaW5hbGx5IHtcbiAgICAgIHNldExvYWRpbmcoZmFsc2UpO1xuICAgICAgc2V0SXNSZWZyZXNoaW5nKGZhbHNlKTtcbiAgICB9XG4gIH07XG5cbiAgdXNlRWZmZWN0KCgpID0+IHtcbiAgICBsb2FkVGFibGVzKHRhYmxlcy5sZW5ndGggPiAwKTtcbiAgICBjb25zdCBpbnRlcnZhbCA9IHNldEludGVydmFsKCgpID0+IGxvYWRUYWJsZXModHJ1ZSksIDUwMDApOyAvLyBQb2xsaW5nIG5n4bqnbSBt4buXaSA1c1xuICAgIHJldHVybiAoKSA9PiBjbGVhckludGVydmFsKGludGVydmFsKTtcbiAgfSwgW10pO1xuXG4gIGNvbnN0IGFyZWFzID0gWydBTEwnLCAuLi5uZXcgU2V0KCh0YWJsZXMgfHwgW10pLm1hcCgodCkgPT4gdC5hcmVhKSldO1xuXG4gIGNvbnN0IGZpbHRlcmVkVGFibGVzID0gc2VsZWN0ZWRBcmVhID09PSAnQUxMJyA/ICh0YWJsZXMgfHwgW10pIDogKHRhYmxlcyB8fCBbXSkuZmlsdGVyKCh0KSA9PiB0LmFyZWEgPT09IHNlbGVjdGVkQXJlYSk7XG5cbiAgY29uc3QgZW1wdHlDb3VudCA9ICh0YWJsZXMgfHwgW10pLmZpbHRlcigodCkgPT4gdC5zdGF0dXMgPT09ICdFTVBUWScpLmxlbmd0aDtcbiAgY29uc3Qgc2VydmluZ0NvdW50ID0gKHRhYmxlcyB8fCBbXSkuZmlsdGVyKCh0KSA9PiB0LnN0YXR1cyA9PT0gJ1NFUlZJTkcnKS5sZW5ndGg7XG5cbiAgcmV0dXJuIChcbiAgICA8ZGl2IGNsYXNzTmFtZT1cInNwYWNlLXktNSBwYi0xNiBtZDpwYi0wXCI+XG4gICAgICB7LyogVG9wIEJhbm5lciAmIFN0YXRzICovfVxuICAgICAgPGRpdiBjbGFzc05hbWU9XCJmbGV4IGZsZXgtY29sIHNtOmZsZXgtcm93IHNtOml0ZW1zLWNlbnRlciBqdXN0aWZ5LWJldHdlZW4gZ2FwLTQgYmctd2hpdGUgcC01IHJvdW5kZWQtMnhsIGJvcmRlciBib3JkZXItZ3JheS0xMDAgc2hhZG93LXNtXCI+XG4gICAgICAgIDxkaXY+XG4gICAgICAgICAgPGgyIGNsYXNzTmFtZT1cInRleHQteGwgZm9udC1ib2xkIHRleHQtZ3JheS05MDAgZmxleCBpdGVtcy1jZW50ZXIgZ2FwLTJcIj5cbiAgICAgICAgICAgIDxDb2ZmZWUgY2xhc3NOYW1lPVwidy02IGgtNiB0ZXh0LWNvZmZlZS02MDBcIiAvPlxuICAgICAgICAgICAgU8ahIMSR4buTIGLDoG5cbiAgICAgICAgICA8L2gyPlxuICAgICAgICAgIDxwIGNsYXNzTmFtZT1cInRleHQtc20gdGV4dC1ncmF5LTUwMCBtdC0wLjVcIj5DaOG7jW4gYsOgbiDEkeG7gyBn4buNaSBtw7NuIGhv4bq3YyB0aOG7sWMgaGnhu4duIHRoYW5oIHRvw6FuPC9wPlxuICAgICAgICA8L2Rpdj5cblxuICAgICAgICA8ZGl2IGNsYXNzTmFtZT1cImZsZXggaXRlbXMtY2VudGVyIGdhcC0zXCI+XG4gICAgICAgICAgPGRpdiBjbGFzc05hbWU9XCJmbGV4IGl0ZW1zLWNlbnRlciBnYXAtMiBweC0zLjUgcHktMS41IGJnLWVtZXJhbGQtNTAgYm9yZGVyIGJvcmRlci1lbWVyYWxkLTIwMCB0ZXh0LWVtZXJhbGQtNzAwIHJvdW5kZWQteGwgdGV4dC14cyBmb250LXNlbWlib2xkXCI+XG4gICAgICAgICAgICA8c3BhbiBjbGFzc05hbWU9XCJ3LTIuNSBoLTIuNSByb3VuZGVkLWZ1bGwgYmctZW1lcmFsZC01MDAgYW5pbWF0ZS1wdWxzZVwiPjwvc3Bhbj5cbiAgICAgICAgICAgIDxzcGFuPlRy4buRbmc6IHtlbXB0eUNvdW50fSBiw6BuPC9zcGFuPlxuICAgICAgICAgIDwvZGl2PlxuXG4gICAgICAgICAgPGRpdiBjbGFzc05hbWU9XCJmbGV4IGl0ZW1zLWNlbnRlciBnYXAtMiBweC0zLjUgcHktMS41IGJnLWFtYmVyLTUwIGJvcmRlciBib3JkZXItYW1iZXItMjAwIHRleHQtYW1iZXItODAwIHJvdW5kZWQteGwgdGV4dC14cyBmb250LXNlbWlib2xkXCI+XG4gICAgICAgICAgICA8c3BhbiBjbGFzc05hbWU9XCJ3LTIuNSBoLTIuNSByb3VuZGVkLWZ1bGwgYmctYW1iZXItNTAwXCI+PC9zcGFuPlxuICAgICAgICAgICAgPHNwYW4+xJBhbmcgcGjhu6VjIHbhu6U6IHtzZXJ2aW5nQ291bnR9IGLDoG48L3NwYW4+XG4gICAgICAgICAgPC9kaXY+XG5cbiAgICAgICAgICA8YnV0dG9uXG4gICAgICAgICAgICBvbkNsaWNrPXsoKSA9PiBsb2FkVGFibGVzKGZhbHNlKX1cbiAgICAgICAgICAgIHRpdGxlPVwiVOG6o2kgbOG6oWkgc8ahIMSR4buTXCJcbiAgICAgICAgICAgIGNsYXNzTmFtZT1cInAtMiBob3ZlcjpiZy1ncmF5LTEwMCByb3VuZGVkLXhsIHRleHQtZ3JheS02MDAgdHJhbnNpdGlvblwiXG4gICAgICAgICAgPlxuICAgICAgICAgICAgPFJlZnJlc2hDdyBjbGFzc05hbWU9e2B3LTUgaC01ICR7aXNSZWZyZXNoaW5nIHx8IGxvYWRpbmcgPyAnYW5pbWF0ZS1zcGluIHRleHQtY29mZmVlLTYwMCcgOiAnJ31gfSAvPlxuICAgICAgICAgIDwvYnV0dG9uPlxuICAgICAgICA8L2Rpdj5cbiAgICAgIDwvZGl2PlxuXG4gICAgICB7LyogQXJlYSBGaWx0ZXIgVGFicyAqL31cbiAgICAgIDxkaXYgY2xhc3NOYW1lPVwiZmxleCBpdGVtcy1jZW50ZXIgZ2FwLTIgb3ZlcmZsb3cteC1hdXRvIHBiLTFcIj5cbiAgICAgICAge2FyZWFzLm1hcCgoYXJlYSkgPT4gKFxuICAgICAgICAgIDxidXR0b25cbiAgICAgICAgICAgIGtleT17YXJlYX1cbiAgICAgICAgICAgIG9uQ2xpY2s9eygpID0+IHNldFNlbGVjdGVkQXJlYShhcmVhKX1cbiAgICAgICAgICAgIGNsYXNzTmFtZT17YHB4LTQgcHktMiByb3VuZGVkLXhsIHRleHQteHMgZm9udC1ib2xkIHdoaXRlc3BhY2Utbm93cmFwIHRyYW5zaXRpb24gJHtcbiAgICAgICAgICAgICAgc2VsZWN0ZWRBcmVhID09PSBhcmVhXG4gICAgICAgICAgICAgICAgPyAnYmctY29mZmVlLTgwMCB0ZXh0LWFtYmVyLTIwMCBzaGFkb3ctbWQnXG4gICAgICAgICAgICAgICAgOiAnYmctd2hpdGUgdGV4dC1ncmF5LTYwMCBob3ZlcjpiZy1ncmF5LTEwMCBib3JkZXIgYm9yZGVyLWdyYXktMjAwJ1xuICAgICAgICAgICAgfWB9XG4gICAgICAgICAgPlxuICAgICAgICAgICAge2FyZWEgPT09ICdBTEwnID8gJ/Cfl7rvuI8gVOG6pXQgY+G6oyBraHUgduG7sWMnIDogYPCfk40gJHthcmVhfWB9XG4gICAgICAgICAgPC9idXR0b24+XG4gICAgICAgICkpfVxuICAgICAgPC9kaXY+XG5cbiAgICAgIHsvKiBUYWJsZXMgR3JpZCAqL31cbiAgICAgIHtsb2FkaW5nICYmIHRhYmxlcy5sZW5ndGggPT09IDAgPyAoXG4gICAgICAgIDxTa2VsZXRvblRhYmxlR3JpZCBjb3VudD17MTJ9IC8+XG4gICAgICApIDogKFxuICAgICAgICA8ZGl2IGNsYXNzTmFtZT1cImdyaWQgZ3JpZC1jb2xzLTIgc206Z3JpZC1jb2xzLTMgbWQ6Z3JpZC1jb2xzLTQgbGc6Z3JpZC1jb2xzLTYgZ2FwLTIuNSBzbTpnYXAtNFwiPlxuICAgICAgICAgIHtmaWx0ZXJlZFRhYmxlcy5tYXAoKHRhYmxlKSA9PiB7XG4gICAgICAgICAgICBjb25zdCBpc1NlcnZpbmcgPSB0YWJsZS5zdGF0dXMgPT09ICdTRVJWSU5HJztcbiAgICAgICAgICAgIGNvbnN0IG9yZGVyID0gdGFibGUuY3VycmVudE9yZGVyO1xuXG4gICAgICAgICAgICByZXR1cm4gKFxuICAgICAgICAgICAgICA8ZGl2XG4gICAgICAgICAgICAgICAga2V5PXt0YWJsZS5pZH1cbiAgICAgICAgICAgICAgICBjbGFzc05hbWU9e2ByZWxhdGl2ZSByb3VuZGVkLTJ4bCBwLTMgc206cC00IGJvcmRlciB0cmFuc2l0aW9uLWFsbCBkdXJhdGlvbi0yMDAgZmxleCBmbGV4LWNvbCBqdXN0aWZ5LWJldHdlZW4gbWluLWgtWzE2MHB4XSBoLWF1dG8gc2hhZG93LXNtIGhvdmVyOnNoYWRvdy1tZCAke1xuICAgICAgICAgICAgICAgICAgaXNTZXJ2aW5nXG4gICAgICAgICAgICAgICAgICAgID8gJ2JnLWdyYWRpZW50LXRvLWJyIGZyb20tYW1iZXItNTAgdG8tb3JhbmdlLTUwIGJvcmRlci1hbWJlci0zMDAgcmluZy0yIHJpbmctYW1iZXItNDAwLzIwJ1xuICAgICAgICAgICAgICAgICAgICA6ICdiZy13aGl0ZSBib3JkZXItZ3JheS0yMDAgaG92ZXI6Ym9yZGVyLWNvZmZlZS01MDAgaG92ZXI6YmctY29mZmVlLTUwLzIwJ1xuICAgICAgICAgICAgICAgIH1gfVxuICAgICAgICAgICAgICA+XG4gICAgICAgICAgICAgICAgey8qIFRvcCBTdGF0dXMgQmFkZ2UgKi99XG4gICAgICAgICAgICAgICAgPGRpdiBjbGFzc05hbWU9XCJmbGV4IGl0ZW1zLWNlbnRlciBqdXN0aWZ5LWJldHdlZW5cIj5cbiAgICAgICAgICAgICAgICAgIDxzcGFuXG4gICAgICAgICAgICAgICAgICAgIGNsYXNzTmFtZT17YHRleHQtWzEwcHhdIHVwcGVyY2FzZSBmb250LWJvbGQgcHgtMiBweS0wLjUgcm91bmRlZC1mdWxsIGJvcmRlciAke1xuICAgICAgICAgICAgICAgICAgICAgIGlzU2VydmluZ1xuICAgICAgICAgICAgICAgICAgICAgICAgPyAnYmctYW1iZXItMTAwIHRleHQtYW1iZXItODAwIGJvcmRlci1hbWJlci0zMDAnXG4gICAgICAgICAgICAgICAgICAgICAgICA6ICdiZy1lbWVyYWxkLTUwIHRleHQtZW1lcmFsZC03MDAgYm9yZGVyLWVtZXJhbGQtMjAwJ1xuICAgICAgICAgICAgICAgICAgICB9YH1cbiAgICAgICAgICAgICAgICAgID5cbiAgICAgICAgICAgICAgICAgICAge2lzU2VydmluZyA/ICfEkGFuZyBkw7luZycgOiAnQsOgbiB0cuG7kW5nJ31cbiAgICAgICAgICAgICAgICAgIDwvc3Bhbj5cbiAgICAgICAgICAgICAgICAgIDxzcGFuIGNsYXNzTmFtZT1cInRleHQtWzExcHhdIHRleHQtZ3JheS00MDAgZmxleCBpdGVtcy1jZW50ZXIgZ2FwLTEgZm9udC1tZWRpdW1cIj5cbiAgICAgICAgICAgICAgICAgICAgPFVzZXJzIGNsYXNzTmFtZT1cInctMyBoLTNcIiAvPiB7dGFibGUuc2VhdHN9XG4gICAgICAgICAgICAgICAgICA8L3NwYW4+XG4gICAgICAgICAgICAgICAgPC9kaXY+XG5cbiAgICAgICAgICAgICAgICB7LyogQ2VudGVyIFRhYmxlIEluZm8gKi99XG4gICAgICAgICAgICAgICAgPGRpdiBjbGFzc05hbWU9XCJteS0yIHRleHQtY2VudGVyXCI+XG4gICAgICAgICAgICAgICAgICA8aDMgY2xhc3NOYW1lPVwidGV4dC1sZyBmb250LWJvbGQgdGV4dC1ncmF5LTgwMFwiPnt0YWJsZS5uYW1lfTwvaDM+XG4gICAgICAgICAgICAgICAgICA8cCBjbGFzc05hbWU9XCJ0ZXh0LVsxMXB4XSB0ZXh0LWdyYXktNTAwIGZvbnQtbWVkaXVtXCI+e3RhYmxlLmFyZWF9PC9wPlxuXG4gICAgICAgICAgICAgICAgICB7aXNTZXJ2aW5nICYmIG9yZGVyICYmIChcbiAgICAgICAgICAgICAgICAgICAgPGRpdiBjbGFzc05hbWU9XCJtdC0xLjUgaW5saW5lLWJsb2NrIGJnLWFtYmVyLTIwMC82MCBweC0yIHB5LTEgcm91bmRlZC1sZyB0ZXh0LWFtYmVyLTkwMCBmb250LWV4dHJhYm9sZCB0ZXh0LXhzXCI+XG4gICAgICAgICAgICAgICAgICAgICAgeyhvcmRlcj8udG90YWxBbW91bnQgfHwgMCkudG9Mb2NhbGVTdHJpbmcoJ3ZpLVZOJyl9IMSRXG4gICAgICAgICAgICAgICAgICAgIDwvZGl2PlxuICAgICAgICAgICAgICAgICAgKX1cbiAgICAgICAgICAgICAgICA8L2Rpdj5cblxuICAgICAgICAgICAgICAgIHsvKiBCb3R0b20gQWN0aW9uIEJ1dHRvbiAqL31cbiAgICAgICAgICAgICAgICA8ZGl2IGNsYXNzTmFtZT1cIm10LWF1dG8gcHQtMiBib3JkZXItdCBib3JkZXItZ3JheS0xMDAvODBcIj5cbiAgICAgICAgICAgICAgICAgIHtpc1NlcnZpbmcgPyAoXG4gICAgICAgICAgICAgICAgICAgIDxkaXYgY2xhc3NOYW1lPVwiZ3JpZCBncmlkLWNvbHMtMiBnYXAtMS41XCI+XG4gICAgICAgICAgICAgICAgICAgICAgPGJ1dHRvblxuICAgICAgICAgICAgICAgICAgICAgICAgb25DbGljaz17KCkgPT4gb25TZWxlY3RUYWJsZSh0YWJsZSl9XG4gICAgICAgICAgICAgICAgICAgICAgICBjbGFzc05hbWU9XCJ3LWZ1bGwgcHktMS41IGJnLXdoaXRlIGJvcmRlciBib3JkZXItYW1iZXItMzAwIHRleHQtYW1iZXItOTAwIGZvbnQtYm9sZCB0ZXh0LVsxMXB4XSByb3VuZGVkLWxnIGhvdmVyOmJnLWFtYmVyLTEwMCB0cmFuc2l0aW9uIGZsZXggaXRlbXMtY2VudGVyIGp1c3RpZnktY2VudGVyIGdhcC0xXCJcbiAgICAgICAgICAgICAgICAgICAgICA+XG4gICAgICAgICAgICAgICAgICAgICAgICA8UGx1cyBjbGFzc05hbWU9XCJ3LTMgaC0zXCIgLz4gR+G7jWlcbiAgICAgICAgICAgICAgICAgICAgICA8L2J1dHRvbj5cbiAgICAgICAgICAgICAgICAgICAgICA8YnV0dG9uXG4gICAgICAgICAgICAgICAgICAgICAgICBvbkNsaWNrPXsoKSA9PiBvbkNoZWNrb3V0VGFibGUodGFibGUsIG9yZGVyKX1cbiAgICAgICAgICAgICAgICAgICAgICAgIGNsYXNzTmFtZT1cInctZnVsbCBweS0xLjUgYmctY29mZmVlLTcwMCBob3ZlcjpiZy1jb2ZmZWUtODAwIHRleHQtd2hpdGUgZm9udC1ib2xkIHRleHQtWzExcHhdIHJvdW5kZWQtbGcgc2hhZG93IHRyYW5zaXRpb24gZmxleCBpdGVtcy1jZW50ZXIganVzdGlmeS1jZW50ZXIgZ2FwLTFcIlxuICAgICAgICAgICAgICAgICAgICAgID5cbiAgICAgICAgICAgICAgICAgICAgICAgIDxDcmVkaXRDYXJkIGNsYXNzTmFtZT1cInctMyBoLTNcIiAvPiBUw61uaFxuICAgICAgICAgICAgICAgICAgICAgIDwvYnV0dG9uPlxuICAgICAgICAgICAgICAgICAgICA8L2Rpdj5cbiAgICAgICAgICAgICAgICAgICkgOiAoXG4gICAgICAgICAgICAgICAgICAgIDxidXR0b25cbiAgICAgICAgICAgICAgICAgICAgICBvbkNsaWNrPXsoKSA9PiBvblNlbGVjdFRhYmxlKHRhYmxlKX1cbiAgICAgICAgICAgICAgICAgICAgICBjbGFzc05hbWU9XCJ3LWZ1bGwgcHktMS41IGJnLWVtZXJhbGQtNjAwIGhvdmVyOmJnLWVtZXJhbGQtNzAwIHRleHQtd2hpdGUgZm9udC1ib2xkIHRleHQteHMgcm91bmRlZC1sZyBzaGFkb3ctc20gdHJhbnNpdGlvbiBmbGV4IGl0ZW1zLWNlbnRlciBqdXN0aWZ5LWNlbnRlciBnYXAtMVwiXG4gICAgICAgICAgICAgICAgICAgID5cbiAgICAgICAgICAgICAgICAgICAgICA8UGx1cyBjbGFzc05hbWU9XCJ3LTMuNSBoLTMuNVwiIC8+IE3hu58gQsOgblxuICAgICAgICAgICAgICAgICAgICA8L2J1dHRvbj5cbiAgICAgICAgICAgICAgICAgICl9XG4gICAgICAgICAgICAgICAgPC9kaXY+XG4gICAgICAgICAgICAgIDwvZGl2PlxuICAgICAgICAgICAgKTtcbiAgICAgICAgICB9KX1cbiAgICAgICAgPC9kaXY+XG4gICAgICApfVxuICAgIDwvZGl2PlxuICApO1xufVxuIl0sImZpbGUiOiJDOi9Vc2Vycy9MZW5vdm8vRG93bmxvYWRzL3RodSBtdWMgbGFtIHZpZWMgYWdlbnQvZnJvbnRlbmQvc3JjL2NvbXBvbmVudHMvVGFibGVNYXAuanN4In0=

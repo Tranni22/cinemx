@@ -1,0 +1,2036 @@
+// 🤖 Gemini Agent CLI (Model: Gemini 3.1 Flash-Lite, thinking HIGH) - gõ tiếng Việt tự nhiên, AI tự quyết định đọc/sửa file, chạy lệnh
+// Trước khi GHI FILE hoặc CHẠY LỆNH -> luôn hỏi xác nhận (y/n) trước khi thực thi thật
+// Cách chạy: node agent.js
+
+import 'dotenv/config';
+import { GoogleGenAI } from '@google/genai';
+import readline from 'readline';
+import fs from 'fs';
+import path from 'path';
+import os from 'os';
+import { execSync, execFileSync } from 'child_process';
+import Tesseract from 'tesseract.js';
+
+// 🖥️ Nhận diện hệ điều hành thật để nạp vào system instruction, tránh agent đoán mò lệnh sai
+// (vd: gọi "ls" trên Windows sẽ fail, phải dùng "dir"; hoặc "rm" trên Windows nên dùng "del"/PowerShell).
+const OS_INFO = {
+  win32: 'Windows (dùng PowerShell/cmd — vd: "dir" thay vì "ls", "del" thay vì "rm", "where" thay vì "which")',
+  darwin: 'macOS (dùng bash/zsh — vd: "ls", "rm", "which" như Unix bình thường)',
+  linux: 'Linux (dùng bash — vd: "ls", "rm", "which" như Unix bình thường)'
+}[process.platform] || `${process.platform} (không chắc chắn shell mặc định, kiểm tra bằng lệnh an toàn trước khi đoán)`;
+
+// 🔑 Lấy TẤT CẢ các key cùng tiền tố (GEMINI_API_KEY_1, _2, _3...) thay vì chỉ lấy 1 key đầu tiên,
+// để có thể XOAY VÒNG (rotate) sang key kế tiếp khi key đang dùng bị hết quota / rate-limit.
+function collectKeys(prefix) {
+  return Object.keys(process.env)
+    .filter(k => k.startsWith(prefix))
+    .sort((a, b) => {
+      const na = parseInt(a.replace(prefix, '').replace(/\D/g, ''), 10) || 0;
+      const nb = parseInt(b.replace(prefix, '').replace(/\D/g, ''), 10) || 0;
+      return na - nb;
+    })
+    .map(k => process.env[k])
+    .filter(Boolean);
+}
+
+const GEMINI_KEYS = collectKeys('GEMINI_API_KEY');
+const TAVILY_KEYS = collectKeys('TAVILY_API_KEY');
+
+if (GEMINI_KEYS.length === 0) {
+  console.error('⚠️ Không tìm thấy GEMINI_API_KEY nào trong file .env');
+  process.exit(1);
+}
+
+let geminiKeyIndex = 0; // index của key Gemini đang dùng trong GEMINI_KEYS
+let tavilyKeyIndex = 0; // index của key Tavily đang dùng trong TAVILY_KEYS
+
+const currentGeminiKey = () => GEMINI_KEYS[geminiKeyIndex];
+const currentTavilyKey = () => TAVILY_KEYS[tavilyKeyIndex];
+
+// 🛡️ Nhận diện lỗi "hết quota / bị giới hạn tốc độ" để biết khi nào nên xoay sang key khác
+// (khác với lỗi cú pháp, lỗi mạng thường... không nên xoay key vô ích trong các trường hợp đó).
+function isQuotaOrAuthError(err) {
+  const status = err?.status ?? err?.code ?? err?.response?.status;
+  const msg = `${err?.message || ''} ${err?.error?.message || ''}`.toLowerCase();
+  return (
+    status === 429 || status === 401 || status === 403 ||
+    status === 'RESOURCE_EXHAUSTED' || status === 'PERMISSION_DENIED' ||
+    msg.includes('429') ||
+    msg.includes('quota') ||
+    msg.includes('resource_exhausted') ||
+    msg.includes('rate limit') ||
+    msg.includes('rate-limit') ||
+    msg.includes('api key not valid') ||
+    msg.includes('permission_denied')
+  );
+}
+
+// 🔁 Lỗi Google đang quá tải (503/UNAVAILABLE/"high demand") — khác bản chất với lỗi quota/key,
+// nhưng vẫn NÊN thử lại (đổi key + chờ 1 chút), vì server có thể rảnh lại sau vài giây.
+function isOverloadedError(err) {
+  const status = err?.status ?? err?.code ?? err?.response?.status;
+  const msg = `${err?.message || ''} ${err?.error?.message || ''}`.toLowerCase();
+  return (
+    status === 503 || status === 'UNAVAILABLE' ||
+    msg.includes('503') ||
+    msg.includes('unavailable') ||
+    msg.includes('high demand') ||
+    msg.includes('overloaded')
+  );
+}
+
+function isRetryableApiError(err) {
+  return isQuotaOrAuthError(err) || isOverloadedError(err);
+}
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const c = {
+  green: (s) => `\x1b[32m${s}\x1b[0m`,
+  cyan: (s) => `\x1b[36m${s}\x1b[0m`,
+  yellow: (s) => `\x1b[33m${s}\x1b[0m`,
+  red: (s) => `\x1b[31m${s}\x1b[0m`,
+  gray: (s) => `\x1b[90m${s}\x1b[0m`,
+  magenta: (s) => `\x1b[35m${s}\x1b[0m`,
+  bold: (s) => `\x1b[1m${s}\x1b[0m`
+};
+
+const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+
+// 🖥️ Danh sách công cụ dev phổ biến để quét 1 lần, giúp agent biết ngay máy có gì mà không cần
+// dò lại (where/which) mỗi lần cần dùng -> tiết kiệm 1-2 vòng gọi API mỗi lần.
+const MACHINE_PROFILE_TOOLS = [
+  { name: 'Node.js', cmd: 'node --version' },
+  { name: 'npm', cmd: 'npm --version' },
+  { name: 'Python', cmd: 'python --version' },
+  { name: 'Python3', cmd: 'python3 --version' },
+  { name: 'Git', cmd: 'git --version' },
+  { name: 'Docker', cmd: 'docker --version' },
+  { name: 'VS Code CLI', cmd: 'code --version' },
+  { name: 'Java', cmd: 'java --version' },
+  { name: 'PHP', cmd: 'php --version' },
+  { name: 'Ruby', cmd: 'ruby --version' },
+  { name: 'Go', cmd: 'go version' },
+  { name: 'Rust', cmd: 'rustc --version' },
+  { name: '.NET SDK', cmd: 'dotnet --version' },
+  { name: 'MySQL client', cmd: 'mysql --version' },
+  { name: 'PostgreSQL client', cmd: 'psql --version' },
+  { name: 'FFmpeg', cmd: 'ffmpeg -version' },
+  { name: 'Yarn', cmd: 'yarn --version' },
+  { name: 'pnpm', cmd: 'pnpm --version' }
+];
+
+function scanMachineProfile() {
+  console.log(c.cyan(`\n🔍 Đang quét ${MACHINE_PROFILE_TOOLS.length} công cụ dev phổ biến trên máy (chỉ mất vài giây)...`));
+  const toolsResult = {};
+  for (const tool of MACHINE_PROFILE_TOOLS) {
+    try {
+      const out = execSync(tool.cmd, { encoding: 'utf-8', timeout: 3000, stdio: ['ignore', 'pipe', 'ignore'] });
+      toolsResult[tool.name] = out.split('\n')[0].trim().slice(0, 120) || 'có, không rõ version';
+    } catch {
+      toolsResult[tool.name] = null; // không tìm thấy trong PATH
+    }
+  }
+  const foundCount = Object.values(toolsResult).filter(Boolean).length;
+  console.log(c.green(`✅ Quét xong: phát hiện ${foundCount}/${MACHINE_PROFILE_TOOLS.length} công cụ có sẵn trong PATH.\n`));
+  return { scannedAt: new Date().toISOString(), tools: toolsResult };
+}
+let awaitingConfirmation = false; // đang treo ở 1 câu hỏi y/n hay không - dùng để xử lý Ctrl+C an toàn, không bị treo cứng
+let totalConfirmWaitMs = 0; // 🐛FIX#3: cộng dồn TOÀN BỘ thời gian ngồi CHỜ người dùng gõ y/n trong suốt phiên,
+// để tách riêng khỏi "thời gian xử lý thật" khi log timing mỗi tool - tránh hiểu lầm máy/lệnh chạy chậm
+// trong khi thực chất là do người dùng ngồi đọc/suy nghĩ trước khi gõ y/n.
+const ask = (question) => {
+  awaitingConfirmation = true;
+  const waitStart = Date.now();
+  return new Promise((resolve) => rl.question(question, (answer) => {
+    awaitingConfirmation = false;
+    totalConfirmWaitMs += Date.now() - waitStart;
+    resolve(answer);
+  }));
+};
+
+let autoMode = false; // 🤖 Khi bật: KHÔNG BAO GIỜ dừng lại hỏi thủ công. An toàn -> tự làm. Rủi ro cao -> tự TỪ CHỐI (không thực hiện) rồi báo lỗi cho AI tự biết đường làm tiếp việc khác, không treo màn hình chờ người dùng.
+
+// 🛡️ Dùng khi đang /auto on mà gặp việc bị chặn: KHÔNG hỏi thủ công (sẽ treo màn hình chờ),
+// mà tự động coi như bị từ chối, trả lỗi rõ ràng để AI tự đọc và xử lý tiếp.
+// - fixable=true (lỗi KỸ THUẬT do chính AI viết sai, vd lỗi cú pháp): BẮT BUỘC tự sửa cho đúng rồi thử lại ngay,
+//   không được bỏ qua, vì đây là lỗi của AI chứ không phải giới hạn an toàn - bỏ qua thì dự án không bao giờ hoàn chỉnh.
+// - fixable=false (GIỚI HẠN AN TOÀN cố định, vd lệnh nguy hiểm/thao tác nhạy cảm): agent KHÔNG được thử lại
+//   dưới bất kỳ hình thức nào (kể cả đổi cách diễn đạt để né), phải báo cho người dùng biết cần tự làm thủ công
+//   nếu thực sự cần, rồi tiếp tục các phần việc khác không liên quan.
+function autoDenyAndContinue(label, reason, { fixable = false } = {}) {
+  console.log(c.red(`   🛡️ [AUTO] TỰ ĐỘNG TỪ CHỐI (không hỏi, không dừng lại): ${reason}`));
+  const guidance = fixable
+    ? `Đây là LỖI KỸ THUẬT do chính bạn viết sai (không phải giới hạn an toàn) — BẮT BUỘC đọc kỹ lỗi, SỬA LẠI cho đúng, rồi thử lại thao tác này NGAY trong lượt này. Không được bỏ qua/chuyển sang việc khác trước khi sửa xong phần này, nếu không dự án sẽ không hoàn chỉnh.`
+    : `Đây là GIỚI HẠN AN TOÀN CỐ ĐỊNH, KHÔNG được thử lại dưới bất kỳ hình thức nào (kể cả đổi cách diễn đạt lệnh/mô tả để né). Báo rõ cho người dùng biết việc này cần họ tự làm thủ công nếu thực sự cần, rồi tiếp tục các phần việc khác không liên quan.`;
+  console.log(c.gray(`   ↪️  ${fixable ? 'Yêu cầu AI tự sửa lỗi rồi thử lại.' : 'Agent sẽ báo cho người dùng, không thử lại việc này nữa.'}`));
+  logAction({ label: `${label} (AUTO tự động từ chối${fixable ? ', cần tự sửa' : ', giới hạn an toàn'})`, status: 'fail' });
+  return {
+    success: false,
+    error: `[TỰ ĐỘNG TỪ CHỐI - đang ở chế độ auto toàn phần, không hỏi người dùng] ${reason} ${guidance}`
+  };
+}
+const actionLog = []; // 📝 Ghi lại từng bước agent đã làm trong phiên, để tóm tắt khi bị ngắt (Ctrl+C)
+let lastBackup = null; // 🗄️ { backupPath, targetPath } của lần ghi/sửa gần nhất - dùng cho lệnh /undo
+const filesCreatedThisSession = new Set(); // 📁 đường dẫn (tuyệt đối) các file MỚI do chính agent tạo ra trong phiên chạy này
+// -> dùng để phân biệt an toàn: agent được TỰ ĐỘNG xoá (dọn rác) những file chính nó vừa tạo,
+// nhưng KHÔNG được tự động xoá file đã có sẵn từ trước (rủi ro cao hơn nhiều).
+
+// 🧠 BỘ NHỚ NHẸ (lightweight memory) - lưu ở file .agent_memory.json, đọc lại mỗi lần khởi động
+// Mục đích: agent "nhớ" được các năng lực của chính nó + vài ghi chú/fact quan trọng giữa các phiên làm việc,
+// KHÔNG phải để lưu toàn bộ lịch sử chat (giữ nhẹ, tránh phình to).
+const MEMORY_FILE = path.join(process.cwd(), '.agent_memory.json');
+const MAX_MEMORY_FACTS = 50; // chỉ giữ tối đa N fact gần nhất, tránh file phình to vô hạn
+
+function loadMemory() {
+  try {
+    if (fs.existsSync(MEMORY_FILE)) {
+      const raw = fs.readFileSync(MEMORY_FILE, 'utf-8');
+      const parsed = JSON.parse(raw);
+      return {
+        capabilities: parsed.capabilities || {},
+        facts: Array.isArray(parsed.facts) ? parsed.facts : [],
+        notes: typeof parsed.notes === 'string' ? parsed.notes : '',
+        machineProfile: parsed.machineProfile || null
+      };
+    }
+  } catch (err) {
+    console.log(c.yellow(`⚠️ Không đọc được ${MEMORY_FILE}, sẽ dùng bộ nhớ trống. Lỗi: ${err.message}`));
+  }
+  return { capabilities: {}, facts: [], notes: '', machineProfile: null };
+}
+
+function saveMemory() {
+  try {
+    fs.writeFileSync(MEMORY_FILE, JSON.stringify(memory, null, 2), 'utf-8');
+    return true;
+  } catch (err) {
+    console.log(c.red(`⚠️ Không lưu được bộ nhớ vào ${MEMORY_FILE}: ${err.message}`));
+    return false;
+  }
+}
+
+let memory = loadMemory();
+const sessionNewFacts = []; // fact được remember_fact ghi thêm TRONG phiên này, dùng để nạp lại context mỗi lượt hỏi
+
+// 📋 KẾ HOẠCH DỰ ÁN — khác với memory (facts vụn vặt), đây là checklist các bước đang làm cho 1 việc LỚN.
+// Mục đích: chống "quên" khi làm dự án dài — plan này được nhắc lại TRONG MỌI LƯỢT CHAT (không chỉ dựa vào
+// model tự nhớ từ lịch sử hội thoại, vì hội thoại càng dài càng dễ bị quên phần đầu).
+const PLAN_FILE = path.join(process.cwd(), '.agent_plan.md');
+
+function loadPlan() {
+  try {
+    if (fs.existsSync(PLAN_FILE)) return fs.readFileSync(PLAN_FILE, 'utf-8');
+  } catch { /* bỏ qua, coi như chưa có plan */ }
+  return '';
+}
+
+function savePlan(content) {
+  try {
+    fs.writeFileSync(PLAN_FILE, content, 'utf-8');
+    return true;
+  } catch (err) {
+    console.log(c.red(`⚠️ Không lưu được plan vào ${PLAN_FILE}: ${err.message}`));
+    return false;
+  }
+}
+
+let currentPlan = loadPlan();
+
+// Tự đăng ký 2 năng lực mới của agent vào bộ nhớ (nếu chưa có), để các phiên sau agent biết mình có gì
+let memoryChangedAtStartup = false;
+if (!memory.capabilities.image_ocr || memory.capabilities.image_ocr.file_path === 'analyzer.js') {
+  memory.capabilities.image_ocr = {
+    command: 'tool: read_image',
+    description: 'Đọc và nhận diện chữ trong ảnh (OCR) bằng Tesseract.js, tích hợp trực tiếp trong agent.',
+    file_path: 'agent.js'
+  };
+  memoryChangedAtStartup = true;
+}
+if (!memory.capabilities.describe_image) {
+  memory.capabilities.describe_image = {
+    command: 'tool: describe_image',
+    description: 'Xem và mô tả nội dung ảnh (người, vật, khung cảnh...) bằng khả năng multimodal của Gemini, khác với read_image (chỉ OCR chữ).',
+    file_path: 'agent.js'
+  };
+  memoryChangedAtStartup = true;
+}
+if (!memory.capabilities.remember_fact) {
+  memory.capabilities.remember_fact = {
+    command: 'tool: remember_fact',
+    description: 'Lưu 1 ghi chú/fact ngắn vào bộ nhớ nhẹ để dùng lại ở các phiên sau.',
+    file_path: 'agent.js'
+  };
+  memoryChangedAtStartup = true;
+}
+if (!memory.capabilities.str_replace_file || memory.capabilities.str_replace_file.description?.includes('CŨ')) {
+  memory.capabilities.str_replace_file = {
+    command: 'tool: str_replace_file',
+    description: 'Sửa 1 đoạn CHÍNH XÁC trong file bằng cách tìm chuỗi cũ (phải DUY NHẤT trong file) và thay bằng chuỗi mới, KHÔNG ghi đè toàn bộ file -> an toàn, không phá format phần còn lại. Đây là cách sửa file ƯU TIÊN, chỉ dùng write_file khi tạo file mới hoặc người dùng yêu cầu viết lại toàn bộ.',
+    file_path: 'agent.js'
+  };
+  memoryChangedAtStartup = true;
+}
+if (memoryChangedAtStartup) saveMemory();
+
+// 🔍 Lần đầu chạy (hoặc chưa từng /scan) -> tự động quét 1 lần các công cụ dev có trên máy,
+// lưu lại để các lượt chat sau biết ngay không cần dò lại từ đầu mỗi lần.
+if (!memory.machineProfile) {
+  memory.machineProfile = scanMachineProfile();
+  saveMemory();
+}
+
+// Gộp bộ nhớ hiện có thành 1 đoạn text ngắn gọn để nạp vào system instruction lúc khởi động
+function buildMemoryContext() {
+  const parts = [];
+  if (memory.notes) parts.push(`Ghi chú chung: ${memory.notes}`);
+  const capEntries = Object.entries(memory.capabilities || {});
+  if (capEntries.length > 0) {
+    const caps = capEntries.map(([k, v]) => `- ${k}: ${v.description || ''}`).join('\n');
+    parts.push(`Các năng lực đã biết của agent:\n${caps}`);
+  }
+  if (Array.isArray(memory.facts) && memory.facts.length > 0) {
+    const recent = memory.facts.slice(-MAX_MEMORY_FACTS).map(f => `- [${f.time}] ${f.text}`).join('\n');
+    parts.push(`Các ghi nhớ (facts) từ trước:\n${recent}`);
+  }
+  return parts.join('\n\n');
+}
+
+function logAction(entry) {
+  actionLog.push({ time: new Date().toLocaleTimeString('vi-VN'), ...entry });
+}
+
+function printSummary() {
+  if (actionLog.length === 0) {
+    console.log(c.gray('\n(Chưa có thao tác nào được thực hiện trong phiên này.)'));
+    return;
+  }
+  console.log(c.cyan(c.bold('\n📋 TÓM TẮT CÁC BƯỚC ĐÃ LÀM TRONG PHIÊN NÀY:')));
+  actionLog.forEach((a, i) => {
+    const statusIcon = a.status === 'ok' ? c.green('✅') : a.status === 'fail' ? c.red('❌') : c.gray('•');
+    console.log(`${i + 1}. [${a.time}] ${statusIcon} ${a.label}`);
+  });
+  console.log('');
+}
+
+// 🛑 Ctrl+C: LẦN 1 -> yêu cầu tạm dừng chuỗi hành động đang chạy (agent sẽ dừng sau bước hiện tại,
+// tóm tắt tình hình rồi chờ bạn). LẦN 2 (bấm tiếp) -> thoát hẳn chương trình.
+let stopRequested = false;
+let inProjectMode = false; // đang ở trong vòng lặp /project hay không
+let projectStopRequested = false; // Ctrl+C trong lúc /project -> set true, để dừng hẳn vòng lặp lớn (không tự động tiếp tục round kế)
+function handleInterrupt() {
+  if (!stopRequested) {
+    stopRequested = true;
+    if (inProjectMode) projectStopRequested = true;
+    if (awaitingConfirmation) {
+      console.log(c.yellow('\n\n⏸️  Đã huỷ câu hỏi xác nhận đang chờ (coi như chọn "n") — agent sẽ dừng lại sau bước này và tóm tắt tình hình.'));
+      rl.write('n\n'); // tự "gõ" n + Enter để giải phóng rl.question() đang bị treo, tránh treo cứng chương trình
+    } else {
+      console.log(c.yellow('\n\n⏸️  Đã nhận yêu cầu TẠM DỪNG — agent sẽ dừng lại sau bước đang chạy và tóm tắt tình hình.'));
+    }
+    console.log(c.gray('   (Bấm Ctrl+C lần nữa nếu muốn THOÁT HẲN ngay bây giờ)\n'));
+    return;
+  }
+  console.log(c.yellow('\n\n⏹️  Đã nhận Ctrl+C lần 2, dừng hẳn...'));
+  printSummary();
+  console.log(c.gray('Thoát chương trình.\n'));
+  process.exit(0);
+}
+process.on('SIGINT', handleInterrupt);
+// ⚠️ QUAN TRỌNG trên Windows: khi đang treo trong rl.question() (chờ y/n), readline TỰ bắt Ctrl+C
+// và mặc định tự đóng interface -> thoát cả chương trình NGAY, bỏ qua process.on('SIGINT') phía trên.
+// Phải đăng ký thêm listener 'SIGINT' ngay trên chính `rl` để ghi đè hành vi mặc định đó.
+rl.on('SIGINT', handleInterrupt);
+
+// 📋 Khai báo 3 "quyền" cho AI: đọc file, ghi file, chạy lệnh terminal
+const tools = [{
+  functionDeclarations: [
+    {
+      name: 'read_file',
+      description: 'Đọc nội dung 1 file trên máy (kèm SỐ DÒNG) để xem code/nội dung hiện tại trước khi sửa. LUÔN đọc file trước khi gọi str_replace_file hoặc write_file, để copy old_str/content chính xác 100% (không đoán, không gõ lại theo trí nhớ). Với file dài, có thể dùng start_line/end_line để xem từng đoạn.',
+      parameters: {
+        type: 'object',
+        properties: {
+          path: { type: 'string', description: 'Đường dẫn file cần đọc, ví dụ: src/server.js' },
+          start_line: { type: 'number', description: 'Dòng bắt đầu (1-indexed), bỏ trống để đọc từ đầu file' },
+          end_line: { type: 'number', description: 'Dòng kết thúc (1-indexed, bao gồm dòng này), bỏ trống để đọc tới cuối file hoặc tới giới hạn ký tự' }
+        },
+        required: ['path']
+      }
+    },
+    {
+      name: 'write_file',
+      description: 'GHI ĐÈ TOÀN BỘ nội dung 1 file (hoặc tạo file mới). CHỈ dùng khi: (1) tạo file chưa tồn tại, hoặc (2) người dùng yêu cầu rõ ràng viết lại toàn bộ file. KHÔNG dùng để sửa 1 phần nhỏ của file đã có nội dung — trường hợp đó PHẢI dùng str_replace_file để tránh chép sai/phá format phần không liên quan. Không dùng cho file nhị phân (.docx, .xlsx, .pptx, .pdf, ảnh, v.v).',
+      parameters: {
+        type: 'object',
+        properties: {
+          path: { type: 'string', description: 'Đường dẫn file cần ghi' },
+          content: { type: 'string', description: 'Toàn bộ nội dung mới của file' }
+        },
+        required: ['path', 'content']
+      }
+    },
+    {
+      name: 'str_replace_file',
+      description: 'Sửa 1 file đã tồn tại bằng cách thay 1 đoạn văn bản CŨ (old_str) bằng đoạn MỚI (new_str), chỉ động vào đúng phần đó, giữ nguyên 100% phần còn lại của file (format, khoảng trắng, thụt lề...). old_str PHẢI khớp CHÍNH XÁC (kể cả khoảng trắng/thụt lề) với nội dung hiện có trong file và PHẢI là DUY NHẤT (chỉ xuất hiện đúng 1 lần) — nếu không sẽ báo lỗi để tránh sửa nhầm chỗ. Đây là công cụ ƯU TIÊN để sửa file, luôn dùng read_file xem trước để copy old_str cho chính xác.',
+      parameters: {
+        type: 'object',
+        properties: {
+          path: { type: 'string', description: 'Đường dẫn file cần sửa' },
+          old_str: { type: 'string', description: 'Đoạn văn bản hiện tại cần thay, phải khớp chính xác và duy nhất trong file' },
+          new_str: { type: 'string', description: 'Đoạn văn bản mới để thay vào chỗ old_str' }
+        },
+        required: ['path', 'old_str', 'new_str']
+      }
+    },
+    {
+      name: 'delete_file',
+      description: 'Xoá 1 file. Dùng để TỰ DỌN DẸP rác do chính bạn tạo ra trong lúc làm việc (file thử-sai, file trùng lặp, file tạo nhầm rồi thay bằng cách khác, file không còn cần dùng nữa) — đừng để lại rác cho người dùng tự dọn. File sẽ được backup trước khi xoá để có thể khôi phục qua lệnh /undo nếu cần. CHỈ xoá file bạn CHẮC CHẮN không cần nữa hoặc file bạn tự tạo ra trong phiên làm việc này — KHÔNG xoá file quan trọng hoặc file đã có sẵn từ trước mà không chắc chắn lý do.',
+      parameters: {
+        type: 'object',
+        properties: {
+          path: { type: 'string', description: 'Đường dẫn file cần xoá' },
+          reason: { type: 'string', description: 'Lý do xoá file này (vd: "file thử nghiệm ban đầu, đã thay bằng cách khác")' }
+        },
+        required: ['path', 'reason']
+      }
+    },
+    {
+      name: 'run_command',
+      description: 'Chạy 1 lệnh terminal (ví dụ: npm install, npm run build, ls...) để kiểm tra hoặc cài đặt.',
+      parameters: {
+        type: 'object',
+        properties: {
+          command: { type: 'string', description: 'Lệnh terminal cần chạy' }
+        },
+        required: ['command']
+      }
+    },
+    {
+      name: 'search_web',
+      description: 'Tìm kiếm thông tin trên internet (dùng Tavily) khi cần thông tin mới, hướng dẫn fix lỗi, phiên bản thư viện mới nhất, tài liệu tham khảo... mà không chắc chắn từ kiến thức có sẵn.',
+      parameters: {
+        type: 'object',
+        properties: {
+          query: { type: 'string', description: 'Từ khoá tìm kiếm, ngắn gọn cụ thể' }
+        },
+        required: ['query']
+      }
+    },
+    {
+      name: 'read_image',
+      description: 'Đọc và nhận diện chữ (OCR) trong 1 file ảnh bằng Tesseract.js. Dùng khi người dùng đưa đường dẫn ảnh (screenshot, ảnh chụp văn bản, ảnh scan...) và cần biết nội dung chữ bên trong ảnh đó.',
+      parameters: {
+        type: 'object',
+        properties: {
+          path: { type: 'string', description: 'Đường dẫn file ảnh cần đọc, ví dụ: screenshot.png' },
+          lang: { type: 'string', description: 'Mã ngôn ngữ OCR (mặc định "eng"). Dùng "vie" nếu ảnh chứa tiếng Việt, hoặc "eng+vie" nếu lẫn cả 2.' }
+        },
+        required: ['path']
+      }
+    },
+    {
+      name: 'describe_image',
+      description: 'Xem và mô tả nội dung ảnh (người, vật, khung cảnh, màu sắc, bố cục...) bằng khả năng multimodal của Gemini — KHÁC với read_image (chỉ OCR chữ). Dùng khi người dùng muốn biết ảnh có gì (ảnh chụp người/vật/phong cảnh...), không phải chỉ để đọc chữ trong ảnh.',
+      parameters: {
+        type: 'object',
+        properties: {
+          path: { type: 'string', description: 'Đường dẫn file ảnh cần xem, ví dụ: photo.jpg' },
+          question: { type: 'string', description: 'Câu hỏi cụ thể về ảnh (vd: "trong ảnh có mấy người?"). Bỏ trống để mô tả tổng quát.' }
+        },
+        required: ['path']
+      }
+    },
+    {
+      name: 'remember_fact',
+      description: 'Lưu 1 ghi chú/thông tin quan trọng ngắn gọn vào bộ nhớ nhẹ của agent (lưu xuống file, giữ lại giữa các phiên làm việc sau này). Dùng khi người dùng dặn "nhớ giúp tôi...", hoặc khi vừa phát hiện ra 1 thông tin đáng ghi nhớ về dự án (ví dụ: cấu trúc thư mục, quy ước đặt tên, quyết định kỹ thuật...).',
+      parameters: {
+        type: 'object',
+        properties: {
+          fact: { type: 'string', description: 'Nội dung cần ghi nhớ, ngắn gọn, 1-2 câu' }
+        },
+        required: ['fact']
+      }
+    },
+    {
+      name: 'open_app',
+      description: 'Mở 1 ứng dụng, file, hoặc URL trên máy Windows (ví dụ: notepad.exe, chrome.exe, đường dẫn file, hoặc 1 trang web). Dùng khi người dùng muốn mở app/file/website nào đó.',
+      parameters: {
+        type: 'object',
+        properties: {
+          target: { type: 'string', description: 'Tên app, đường dẫn file, hoặc URL cần mở. KHÔNG tự thêm dấu ngoặc kép quanh giá trị này (kể cả khi đường dẫn có khoảng trắng) - hệ thống tự xử lý quote, tự thêm sẽ làm lệnh bị lỗi. Để mở 1 FILE cụ thể: chỉ truyền đường dẫn file, KHÔNG kèm tên app phía trước (vd đúng: "C:\\\\path\\\\to\\\\file.txt", sai: "notepad.exe C:\\\\path\\\\to\\\\file.txt") - Windows sẽ tự mở bằng app mặc định. Để mở app KHÔNG kèm file: chỉ truyền tên/đường dẫn app (vd "notepad.exe", "chrome.exe"). Trường hợp cần mở app kèm tham số đơn giản không có khoảng trắng thì được phép gộp (vd "chrome.exe https://google.com").' }
+        },
+        required: ['target']
+      }
+    },
+    {
+      name: 'take_screenshot',
+      description: 'Chụp toàn màn hình hiện tại, lưu thành file ảnh và trả về đường dẫn. LUÔN gọi tool này trước khi mouse_click để "nhìn" xem đang có gì trên màn hình và toạ độ chính xác cần click ở đâu (sau đó có thể gọi describe_image trên ảnh vừa chụp để phân tích). Không đoán mò toạ độ khi chưa chụp màn hình.',
+      parameters: {
+        type: 'object',
+        properties: {}
+      }
+    },
+    {
+      name: 'mouse_click',
+      description: 'Di chuột tới toạ độ (x, y) trên màn hình và click. LUÔN chụp màn hình (take_screenshot) và dùng describe_image để xác định toạ độ chính xác trước khi gọi tool này. Nếu hành động này liên quan tới mua hàng, thanh toán, xoá, huỷ, đăng xuất, đổi mật khẩu... phải mô tả rõ trong "description" để hệ thống bắt xác nhận thủ công.',
+      parameters: {
+        type: 'object',
+        properties: {
+          x: { type: 'number', description: 'Toạ độ X (pixel) cần click' },
+          y: { type: 'number', description: 'Toạ độ Y (pixel) cần click' },
+          button: { type: 'string', description: 'Nút chuột: "left" (mặc định) hoặc "right"' },
+          description: { type: 'string', description: 'Mô tả ngắn gọn đang click vào đâu để làm gì, ví dụ: "click nút Save trong Notepad" hoặc "click nút Thanh toán ngay"' }
+        },
+        required: ['x', 'y', 'description']
+      }
+    },
+    {
+      name: 'type_text',
+      description: 'Gõ chữ vào ô đang được focus trên màn hình (giống gõ bàn phím thật). Cần click vào đúng ô nhập liệu trước bằng mouse_click rồi mới gọi tool này để gõ. Có thể dùng để gõ các phím đặc biệt như {ENTER}, {TAB}, {ESC}.',
+      parameters: {
+        type: 'object',
+        properties: {
+          text: { type: 'string', description: 'Nội dung cần gõ. Dùng {ENTER}, {TAB}, {ESC}, {BACKSPACE} cho phím đặc biệt.' },
+          description: { type: 'string', description: 'Mô tả ngắn gọn đang gõ gì vào đâu, ví dụ: "gõ tên đăng nhập vào ô Username"' }
+        },
+        required: ['text', 'description']
+      }
+    },
+    {
+      name: 'update_plan',
+      description: 'Ghi/cập nhật KẾ HOẠCH cho 1 việc LỚN (nhiều bước, nhiều file, tính năng mới...) dưới dạng checklist Markdown (- [ ] việc chưa làm, - [x] việc đã xong). BẮT BUỘC gọi tool này TRƯỚC KHI bắt đầu thực hiện bất kỳ việc nào cần từ 2 bước hoặc 2 file trở lên, để có checklist rõ ràng. Sau khi hoàn thành từng bước, gọi lại tool này với nội dung đã cập nhật (đánh dấu [x]) để theo dõi tiến độ. Kế hoạch này sẽ được nhắc lại ở MỌI lượt chat sau đó, giúp không bị quên giữa chừng.',
+      parameters: {
+        type: 'object',
+        properties: {
+          plan_markdown: { type: 'string', description: 'Toàn bộ nội dung kế hoạch mới, dạng Markdown checklist. Ghi ĐẦY ĐỦ (không rút gọn), vì sẽ GHI ĐÈ toàn bộ plan cũ.' }
+        },
+        required: ['plan_markdown']
+      }
+    }
+  ]
+}];
+
+// 🛡️FIX#2: Danh sách mẫu lệnh nguy hiểm -> LUÔN bắt xác nhận thủ công, kể cả đang bật auto mode.
+// ⚠️ QUAN TRỌNG: đây CHỈ là lớp phòng vệ PHỤ (defense-in-depth), KHÔNG PHẢI hàng rào an toàn tuyệt đối -
+// bất kỳ blacklist regex nào cũng có thể bị lách (alias, encode, chia nhỏ lệnh qua nhiều bước...).
+// Lớp phòng vệ CHÍNH vẫn là: luôn hiện rõ lệnh cho người dùng xem trước khi chạy (trừ auto mode),
+// và /workdir để giới hạn phạm vi file agent được đụng vào. Mở rộng danh sách bên dưới để bắt thêm
+// các biến thể PowerShell thường bị bỏ sót (bản gốc chỉ có lệnh Unix/cmd.exe cổ điển).
+const DANGEROUS_COMMAND_PATTERNS = [
+  // --- Xoá/ghi đè dữ liệu (Unix + cmd.exe cổ điển) ---
+  /rm\s+-rf/i, /rd\s+\/s/i, /del\s+\/f/i, /format\s/i, /shutdown/i, /mkfs/i,
+  /dd\s+if=/i, /:\(\)\{.*:\|:&\};:/i, // fork bomb
+  /git\s+push\s+(--force|-f)/i, /npm\s+publish/i, /drop\s+table/i, /drop\s+database/i,
+  />\s*\/dev\/sd/i, /reg\s+delete/i, /taskkill\s+\/f/i,
+  // --- Xoá/ghi đè dữ liệu (PowerShell) - bổ sung vì bản gốc chỉ chặn cmd.exe/Unix ---
+  /remove-item\s+.*-recurse/i, /remove-item\s+.*-force/i, /ri\s+.*-r(ecurse)?\b/i,
+  /clear-content/i, /clear-disk/i, /format-volume/i, /initialize-disk/i, /diskpart/i,
+  /vssadmin\s+delete\s+shadows/i, /cipher\s+\/w/i, // xoá vĩnh viễn dữ liệu đã "xoá", không khôi phục được
+  // --- Né tránh AI/lệnh bị mã hoá, thường dùng để giấu ý đồ thật ---
+  /-encodedcommand/i, /invoke-expression/i, /\biex\b/i, /frombase64string/i, /certutil\s+.*-decode/i,
+  // --- Tự cấp quyền / tạo user / mở cổng hậu ---
+  /net\s+user\s+.*\/add/i, /net\s+localgroup\s+administrators/i, /schtasks\s+.*\/create/i,
+  /new-localuser/i, /add-localgroupmember/i,
+  // --- Tắt lớp bảo vệ hệ thống ---
+  /set-mppreference/i, /set-executionpolicy\s+.*bypass/i, /netsh\s+advfirewall.*disable/i,
+  /disable-windowsoptionalfeature/i,
+  // --- Thao tác registry nhạy cảm (persistence/tự khởi động cùng máy) ---
+  /reg\s+add\s+.*\\run/i, /new-itemproperty\s+.*\\run/i,
+  // --- LOLBins thường bị lợi dụng để tải/chạy mã từ xa ---
+  /bitsadmin\s+.*\/transfer/i, /mshta\s+/i, /regsvr32\s+.*\/[su]/i, /wmic\s+process\s+call\s+create/i,
+  /rundll32\s+.*javascript:/i
+];
+
+function isDangerousCommand(command) {
+  return DANGEROUS_COMMAND_PATTERNS.some(pattern => pattern.test(command));
+}
+
+// 🛡️ Từ khoá rủi ro cho thao tác UI (click chuột / gõ chữ) -> LUÔN bắt xác nhận thủ công,
+// kể cả đang bật auto mode. Kiểm tra trên "description" (AI tự mô tả đang làm gì) và "text" (nội dung gõ).
+const RISKY_UI_ACTION_PATTERNS = [
+  // Mua bán / thanh toán
+  /mua\s*ngay/i, /thanh\s*to[aá]n/i, /đặt\s*h[àa]ng/i, /x[aá]c\s*nh[ậa]n\s*đơn/i,
+  /checkout/i, /add\s*to\s*cart/i, /place\s*order/i, /pay\s*now/i, /buy\s*now/i, /confirm\s*order/i,
+  /chuy[ểe]n\s*khoản/i, /gi[ao]\s*d[ịi]ch/i, /nạp\s*tiền/i, /rút\s*tiền/i,
+  // Xoá / huỷ
+  /x[oó]a\s*(t[àa]i\s*khoản|đơn|d[ữư]\s*li[ệe]u)/i, /delete\s*account/i, /huỷ\s*đơn/i, /cancel\s*order/i,
+  // Gửi biểu mẫu quan trọng / đăng xuất / đổi mật khẩu
+  /submit/i, /gửi\s*biểu\s*mẫu/i, /đăng\s*xuất/i, /log\s*out/i, /đổi\s*mật\s*khẩu/i, /change\s*password/i
+];
+
+function isRiskyUIAction(...texts) {
+  const combined = texts.filter(Boolean).join(' ');
+  return RISKY_UI_ACTION_PATTERNS.some(pattern => pattern.test(combined));
+}
+
+// 🛡️ Kiểm tra cú pháp nhanh trước khi auto-ghi file JS (không tự tin thì bắt hỏi thủ công)
+// 🔗 Kiểm tra các import/require nội bộ (đường dẫn tương đối "./..." hoặc "../...") có thực sự tồn tại
+// trên đĩa hay không. `node --check` CHỈ kiểm tra cú pháp, KHÔNG hề kiểm tra file import có tồn tại thật
+// hay không -> đây là lỗ hổng khiến agent có thể ghi 1 file "hợp lệ cú pháp" nhưng import 1 file rác/không
+// tồn tại, chỉ vỡ khi thực sự CHẠY (vd nodemon restart) chứ không bị bắt lúc ghi. Bù lỗ hổng đó ở đây.
+// 🚫 Phát hiện "placeholder lười": comment kiểu "// ... existing code ...", "// giữ nguyên phần còn lại"...
+// Đây là dấu hiệu AI RÚT GỌN nội dung thay vì viết đầy đủ 100% khi ghi đè file (write_file GHI ĐÈ TOÀN
+// BỘ, không phải diff) -> nếu để lọt, phần code thật nằm ở chỗ bị "tóm tắt" đó sẽ MẤT VĨNH VIỄN khi ghi.
+// system instruction đã cấm việc này bằng lời, nhưng vẫn có thể bị bỏ qua -> chặn cứng thêm ở đây.
+const LAZY_PLACEHOLDER_PATTERNS = [
+  /\/\/\s*\.\.\.\s*existing code\s*\.\.\./i,
+  /\/\/\s*\.\.\.\s*rest of (the\s*)?(code|file)/i,
+  /\/\/\s*\.\.\.\s*(code|content|phần còn lại)?\s*(is\s*)?unchanged/i,
+  /\/\/\s*giữ nguyên\s*(phần|toàn bộ)?\s*(còn lại|code|nội dung)?/i,
+  /\/\/\s*\(giữ nguyên[^)]*\)/i,
+  /\/\/\s*phần (còn lại|khác)\s*(giữ nguyên|không đổi)/i,
+  /\/\/\s*\[unchanged\]/i,
+  /\/\*\s*\.\.\.\s*(existing|rest|unchanged)/i
+];
+
+function checkForLazyPlaceholder(filePath, content) {
+  const ext = path.extname(filePath).toLowerCase();
+  if (!['.js', '.mjs', '.cjs', '.ts', '.jsx', '.tsx'].includes(ext)) return { checked: false, ok: true };
+  const hit = LAZY_PLACEHOLDER_PATTERNS.find(p => p.test(content));
+  if (hit) {
+    return {
+      checked: true, ok: false,
+      error: `Nội dung chứa comment kiểu "giữ nguyên/existing code/unchanged" (khớp mẫu ${hit}) - đây là dấu hiệu RÚT GỌN thay vì viết đủ nội dung thật, sẽ làm MẤT code thật khi ghi đè file. Phải viết ĐẦY ĐỦ 100% nội dung, không dùng comment kiểu tóm tắt/placeholder này.`
+    };
+  }
+  return { checked: true, ok: true };
+}
+
+function checkLocalImportsExist(filePath, content) {
+  const ext = path.extname(filePath).toLowerCase();
+  if (!['.js', '.mjs', '.cjs'].includes(ext)) return { checked: false, ok: true };
+
+  const importRegex = /(?:from\s+|require\(\s*|import\(\s*)['"](\.[^'"]+)['"]/g;
+  const missing = [];
+  let match;
+  while ((match = importRegex.exec(content)) !== null) {
+    const importPath = match[1];
+    const basePath = path.resolve(path.dirname(filePath), importPath);
+    const candidates = [
+      basePath, `${basePath}.js`, `${basePath}.mjs`, `${basePath}.cjs`, `${basePath}.json`,
+      path.join(basePath, 'index.js'), path.join(basePath, 'index.mjs'), path.join(basePath, 'index.cjs')
+    ];
+    if (!candidates.some(p => fs.existsSync(p))) missing.push(importPath);
+  }
+
+  if (missing.length > 0) {
+    return {
+      checked: true, ok: false,
+      error: `Import file KHÔNG TỒN TẠI trên đĩa: ${missing.join(', ')} (tính tương đối so với thư mục ${path.dirname(filePath)}) - chạy thật sẽ bị lỗi ERR_MODULE_NOT_FOUND.`
+    };
+  }
+  return { checked: true, ok: true };
+}
+
+function passesSyntaxCheck(filePath, content) {
+  const ext = path.extname(filePath).toLowerCase();
+
+  if (ext === '.json') {
+    try {
+      JSON.parse(content);
+      return { checked: true, ok: true };
+    } catch (err) {
+      return { checked: true, ok: false, error: `JSON không hợp lệ: ${err.message}` };
+    }
+  }
+
+  if (!['.js', '.mjs', '.cjs'].includes(ext)) return { checked: false, ok: true }; // loại khác -> bỏ qua check, coi như ok
+
+  const tmpFile = path.join(process.cwd(), `.__syntax_check_tmp${ext}`);
+  try {
+    fs.writeFileSync(tmpFile, content, 'utf-8');
+    // 🛡️FIX#1 (phòng ngừa): dùng execFileSync với mảng tham số thay vì execSync ghép chuỗi.
+    // execFileSync gọi thẳng process "node" KHÔNG qua shell, nên dù tmpFile/ext có ký tự gì
+    // (&, |, ", `...) cũng KHÔNG bao giờ bị shell diễn giải thành lệnh khác - loại bỏ hoàn toàn
+    // lớp rủi ro command injection ở đây, kể cả khi logic whitelist ext phía trên có bị sửa sai sau này.
+    execFileSync('node', ['--check', tmpFile], { stdio: 'pipe' });
+    return { checked: true, ok: true };
+  } catch (err) {
+    return { checked: true, ok: false, error: (err.stderr || err.message).toString().slice(0, 500) };
+  } finally {
+    if (fs.existsSync(tmpFile)) fs.unlinkSync(tmpFile);
+  }
+}
+
+// 🛡️ Cảnh báo "co rút bất thường": nếu nội dung mới ngắn hơn hẳn bản cũ (dấu hiệu AI tóm tắt/cắt xén nhầm
+// thay vì giữ nguyên phần không liên quan), ép chuyển sang hỏi thủ công dù đang bật auto mode.
+const SHRINK_WARN_RATIO = 0.5; // nội dung mới < 50% độ dài cũ -> nghi ngờ
+const SHRINK_WARN_MIN_LEN = 300; // chỉ áp dụng với file đủ lớn, tránh báo động giả với file nhỏ
+function looksSuspiciouslyShrunk(oldContent, newContent) {
+  if (oldContent.length < SHRINK_WARN_MIN_LEN) return false;
+  return newContent.length < oldContent.length * SHRINK_WARN_RATIO;
+}
+// 🚫 Các đuôi file NHỊ PHÂN không được đọc/ghi kiểu text (fs.*Sync utf-8) vì sẽ làm hỏng cấu trúc file thật sự
+// (docx/xlsx/pptx/pdf... về bản chất là file zip/binary bên trong, đọc/ghi như text sẽ phá hỏng ngay lập tức).
+const BINARY_EXTENSIONS = new Set([
+  '.docx', '.doc', '.dotx', '.xlsx', '.xls', '.xlsm', '.pptx', '.ppt', '.pdf',
+  '.zip', '.rar', '.7z', '.tar', '.gz',
+  '.png', '.jpg', '.jpeg', '.gif', '.bmp', '.ico', '.webp',
+  '.mp3', '.mp4', '.avi', '.mov', '.wav',
+  '.exe', '.dll', '.so', '.bin', '.db', '.sqlite',
+  '.woff', '.woff2', '.ttf', '.eot', '.traineddata'
+]);
+
+function isBinaryPath(filePath) {
+  return BINARY_EXTENSIONS.has(path.extname(filePath).toLowerCase());
+}
+
+function binaryGuardError(filePath) {
+  const ext = path.extname(filePath).toLowerCase();
+  return `File "${filePath}" có đuôi "${ext}" là định dạng NHỊ PHÂN (docx/xlsx/pdf/ảnh...). ` +
+    `Agent này chỉ đọc/ghi được file TEXT (code, .txt, .md, .json, .csv...). ` +
+    `Đọc/ghi file ${ext} kiểu text sẽ làm HỎNG file. Cần công cụ chuyên dụng khác (ví dụ thư viện docx/xlsx riêng) để xử lý loại file này.`;
+}
+
+// 🔒 DANH SÁCH FILE/THƯ MỤC CẤM TUYỆT ĐỐI - chặn CỨNG ở tầng code, KHÔNG phụ thuộc AI có "hiểu đúng"
+// instruction hay không. Khai báo trong .env: AGENT_PROTECTED_PATHS=path1,path2 (cách nhau bởi dấu phẩy,
+// đường dẫn tương đối tính từ thư mục đang chạy agent, hoặc tuyệt đối). Ghi/sửa/xoá bất kỳ file nào nằm
+// TRONG hoặc CHÍNH LÀ 1 trong các đường dẫn này -> LUÔN bị chặn, kể cả đang /auto on hay /project.
+const PROTECTED_PATHS = (process.env.AGENT_PROTECTED_PATHS || '')
+  .split(',')
+  .map(p => p.trim())
+  .filter(Boolean)
+  .map(p => path.resolve(p));
+
+function isProtectedPath(filePath) {
+  const resolved = path.resolve(filePath);
+  return PROTECTED_PATHS.some(protectedPath =>
+    resolved === protectedPath || resolved.startsWith(protectedPath + path.sep)
+  );
+}
+
+function protectedPathError(filePath) {
+  return `File/thư mục "${filePath}" nằm trong danh sách CẤM TUYỆT ĐỐI (AGENT_PROTECTED_PATHS trong .env) - người dùng đã tự tay khoá không cho agent đụng vào, KHÔNG có ngoại lệ, không tìm cách lách. Nếu thực sự cần sửa file này, người dùng phải tự làm hoặc tự bỏ nó khỏi danh sách bảo vệ trong .env trước.`;
+}
+
+// 📌 KHOÁ THƯ MỤC LÀM VIỆC: ngược lại với PROTECTED_PATHS (danh sách CẤM), đây là "chỉ được phép TRONG
+// đúng thư mục này". Dùng khi người dùng chỉ định rõ "làm ở thư mục X" nhưng lo agent lỡ tay ghi ra
+// process.cwd() hoặc chỗ khác - đây là chốt CỨNG ở tầng code, không phụ thuộc AI có hiểu đúng path hay
+// không. Bật bằng lệnh "/workdir <đường dẫn>", tắt bằng "/workdir off".
+let lockedProjectRoot = null; // đường dẫn tuyệt đối đã resolve, hoặc null nếu không khoá
+
+function isOutsideLockedRoot(filePath) {
+  if (!lockedProjectRoot) return false;
+  const resolved = path.resolve(filePath);
+  return resolved !== lockedProjectRoot && !resolved.startsWith(lockedProjectRoot + path.sep);
+}
+
+function lockedRootError(filePath) {
+  return `Đường dẫn "${filePath}" nằm NGOÀI thư mục làm việc đã bị người dùng KHOÁ CỨNG bằng /workdir: "${lockedProjectRoot}". Người dùng chỉ cho phép làm việc TRONG đúng thư mục này (và các thư mục con của nó) - KHÔNG được ghi/sửa/xoá bất kỳ đâu ngoài phạm vi đó, kể cả process.cwd() hiện tại nếu nó khác thư mục đã khoá. Hãy dùng đường dẫn ĐÚNG bên trong "${lockedProjectRoot}" (có thể là đường dẫn tuyệt đối đầy đủ để chắc chắn không nhầm).`;
+}
+
+// 🗄️ Backup file trước khi ghi đè, để có thể khôi phục nếu AI ghi sai
+// ⚠️ QUAN TRỌNG: backup của 1 file LUÔN nằm trong ".agent_backups" NGAY CẠNH chính file đó (theo thư mục
+// chứa file), KHÔNG dùng process.cwd() cố định lúc khởi động agent. Lý do: nếu agent sửa 1 file nằm NGOÀI
+// thư mục đang chạy (vd agent chạy từ project A nhưng lỡ sửa file ở project B), backup theo cwd cố định
+// sẽ bị lưu "lạc" vào project A, khiến người dùng tìm mãi không thấy backup ở project B bị sửa.
+function backupFile(filePath) {
+  try {
+    if (!fs.existsSync(filePath)) return null; // file mới, không cần backup
+    const backupDir = path.join(path.dirname(path.resolve(filePath)), '.agent_backups');
+    if (!fs.existsSync(backupDir)) fs.mkdirSync(backupDir, { recursive: true });
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const backupName = `${path.basename(filePath)}.${stamp}.bak`;
+    const backupPath = path.join(backupDir, backupName);
+    fs.copyFileSync(filePath, backupPath);
+    return backupPath;
+  } catch (err) {
+    console.log(c.yellow(`   ⚠️ Không tạo được backup cho ${filePath}: ${err.message}`));
+    return null;
+  }
+}
+
+// 🔍 Diff dòng đơn giản (LCS) để xem trước CHÍNH XÁC những dòng nào đổi, thay vì chỉ xem đoạn nội dung mới mù mờ.
+// Giới hạn số dòng để tránh treo máy với file cực lớn.
+const DIFF_MAX_LINES = 4000;
+function computeLineDiff(oldText, newText) {
+  const oldLines = oldText.split('\n');
+  const newLines = newText.split('\n');
+  if (oldLines.length > DIFF_MAX_LINES || newLines.length > DIFF_MAX_LINES) return null;
+
+  const n = oldLines.length, m = newLines.length;
+  const dp = Array.from({ length: n + 1 }, () => new Uint32Array(m + 1));
+  for (let i = n - 1; i >= 0; i--) {
+    for (let j = m - 1; j >= 0; j--) {
+      dp[i][j] = oldLines[i] === newLines[j] ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1]);
+    }
+  }
+  const ops = [];
+  let i = 0, j = 0;
+  while (i < n && j < m) {
+    if (oldLines[i] === newLines[j]) { ops.push({ t: '=', line: oldLines[i] }); i++; j++; }
+    else if (dp[i + 1][j] >= dp[i][j + 1]) { ops.push({ t: '-', line: oldLines[i] }); i++; }
+    else { ops.push({ t: '+', line: newLines[j] }); j++; }
+  }
+  while (i < n) { ops.push({ t: '-', line: oldLines[i] }); i++; }
+  while (j < m) { ops.push({ t: '+', line: newLines[j] }); j++; }
+  return ops;
+}
+
+// In diff ra console dạng rút gọn: chỉ hiện vùng thay đổi + 2 dòng ngữ cảnh mỗi bên, ẩn bớt phần giống hệt để dễ đọc.
+function printDiff(ops, contextLines = 2) {
+  if (!ops) {
+    console.log(c.gray('   (File quá lớn để hiện diff chi tiết, hãy xem kỹ đoạn nội dung mới bên dưới)'));
+    return;
+  }
+  const changedIdx = new Set();
+  ops.forEach((op, idx) => { if (op.t !== '=') changedIdx.add(idx); });
+  if (changedIdx.size === 0) {
+    console.log(c.gray('   (Không có thay đổi thực sự nào so với file cũ)'));
+    return;
+  }
+  const showIdx = new Set();
+  for (const idx of changedIdx) {
+    for (let k = Math.max(0, idx - contextLines); k <= Math.min(ops.length - 1, idx + contextLines); k++) showIdx.add(k);
+  }
+  let lastShown = -2;
+  for (let idx = 0; idx < ops.length; idx++) {
+    if (!showIdx.has(idx)) continue;
+    if (idx - lastShown > 1) console.log(c.gray('   ...'));
+    const op = ops[idx];
+    if (op.t === '+') console.log(c.green(`   + ${op.line}`));
+    else if (op.t === '-') console.log(c.red(`   - ${op.line}`));
+    else console.log(c.gray(`     ${op.line}`));
+    lastShown = idx;
+  }
+  const added = ops.filter(o => o.t === '+').length;
+  const removed = ops.filter(o => o.t === '-').length;
+  console.log(c.gray(`   (Tổng: +${added} dòng thêm, -${removed} dòng xoá)`));
+}
+
+function executeReadFile(args) {
+  if (isBinaryPath(args.path)) {
+    console.log(c.red(`   ⚠️ Đọc thất bại: "${args.path}" — bị chặn vì là file nhị phân, tool này chỉ đọc được file text.`));
+    logAction({ label: `Đọc file: ${args.path} (bị chặn - file nhị phân)`, status: 'fail' });
+    return { success: false, error: binaryGuardError(args.path) };
+  }
+  try {
+    const content = fs.readFileSync(args.path, 'utf-8');
+    const allLines = content.split('\n');
+    const start = args.start_line && args.start_line > 0 ? args.start_line : 1;
+    const end = args.end_line && args.end_line >= start ? Math.min(args.end_line, allLines.length) : allLines.length;
+    const sliceLines = allLines.slice(start - 1, end);
+    const numbered = sliceLines.map((l, k) => `${start + k}\t${l}`).join('\n');
+    const truncated = numbered.length > 15000;
+    const finalContent = numbered.slice(0, 15000);
+
+    console.log(c.gray(`   📖 Đã đọc: ${args.path} (dòng ${start}-${end}/${allLines.length}, ${content.length} ký tự tổng)`));
+    logAction({ label: `Đọc file: ${args.path} (dòng ${start}-${end})`, status: 'ok' });
+    return {
+      success: true,
+      total_lines: allLines.length,
+      shown_range: `${start}-${end}`,
+      content: finalContent,
+      truncated_warning: truncated ? `Nội dung bị cắt bớt vì quá dài. Dùng start_line/end_line để đọc thêm phần còn lại (file có tổng ${allLines.length} dòng).` : undefined
+    };
+  } catch (err) {
+    // 🐛FIX#1: trước đây lỗi này CHỈ vào logAction (im lặng, chỉ thấy khi gõ /summary hoặc Ctrl+C).
+    // Giờ in ra ngay lập tức (⚠️) giống pattern write_file/delete_file, để thấy real-time là AI vừa đọc file thất bại.
+    console.log(c.red(`   ⚠️ Đọc thất bại: "${args.path}" — ${err.message}`));
+    logAction({ label: `Đọc file: ${args.path}`, status: 'fail' });
+    return { success: false, error: err.message };
+  }
+}
+
+// ✍️ Ghi file - Auto mode: tự kiểm tra cú pháp trước, qua thì tự ghi. Không qua/không phải JS -> vẫn hỏi thủ công.
+// Luôn: chặn file nhị phân, backup file cũ trước khi ghi đè, hiện DIFF thật so với bản cũ (không phải chỉ xem nội dung mới mù mờ).
+async function executeWriteFile(args) {
+  if (isOutsideLockedRoot(args.path)) {
+    console.log(c.red(`\n📌 BỊ CHẶN: "${args.path}" nằm NGOÀI thư mục đã khoá bằng /workdir ("${lockedProjectRoot}").`));
+    logAction({ label: `Ghi file: ${args.path} (bị chặn - ngoài /workdir)`, status: 'fail' });
+    return { success: false, error: lockedRootError(args.path) };
+  }
+  if (isProtectedPath(args.path)) {
+    console.log(c.red(`\n🔒 BỊ CHẶN: "${args.path}" nằm trong danh sách CẤM TUYỆT ĐỐI (AGENT_PROTECTED_PATHS).`));
+    logAction({ label: `Ghi file: ${args.path} (bị chặn - protected path)`, status: 'fail' });
+    return { success: false, error: protectedPathError(args.path) };
+  }
+  if (isBinaryPath(args.path)) {
+    logAction({ label: `Ghi file: ${args.path} (bị chặn - file nhị phân)`, status: 'fail' });
+    return { success: false, error: binaryGuardError(args.path) };
+  }
+
+  const fileExisted = fs.existsSync(args.path);
+  const oldContent = fileExisted ? fs.readFileSync(args.path, 'utf-8') : '';
+
+  console.log(c.yellow(`\n⚠️  AI muốn GHI ĐÈ TOÀN BỘ file: ${c.bold(args.path)}`));
+  if (fileExisted) {
+    console.log(c.gray(`--- So sánh với file cũ (diff) ---`));
+    printDiff(computeLineDiff(oldContent, args.content));
+    console.log(c.gray(`-----------------------------------`));
+  } else {
+    console.log(c.gray(`--- Nội dung file mới (xem trước) ---`));
+    console.log(args.content.slice(0, 800) + (args.content.length > 800 ? '\n...(còn nữa)' : ''));
+    console.log(c.gray(`--------------------------------------`));
+  }
+
+  const doWrite = () => {
+    const dir = path.dirname(args.path);
+    if (dir && !fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    const backupPath = backupFile(args.path);
+    fs.writeFileSync(args.path, args.content, 'utf-8');
+    if (!fileExisted) filesCreatedThisSession.add(path.resolve(args.path)); // file mới tinh -> đánh dấu để sau này được phép tự dọn nếu cần
+    if (backupPath) lastBackup = { backupPath, targetPath: args.path }; // để /undo dùng lại
+    // ✅ Xác minh: đọc lại ngay sau khi ghi, so khớp byte-để-byte với nội dung định ghi.
+    // Bắt được trường hợp ghi thiếu do lỗi đĩa/quyền/encoding thay vì im lặng tin là đã ghi đúng.
+    const verify = fs.readFileSync(args.path, 'utf-8');
+    if (verify !== args.content) {
+      console.log(c.red(`   ⚠️ CẢNH BÁO: đọc lại file sau khi ghi KHÔNG khớp với nội dung định ghi! (có thể do lỗi hệ thống)`));
+    } else {
+      console.log(c.green(`   ✅ Đã ghi file: ${args.path} (đã xác minh đọc lại khớp 100%)`));
+    }
+    if (backupPath) console.log(c.gray(`   🗄️  Đã backup bản cũ tại: ${backupPath}`));
+    return backupPath;
+  };
+
+  const suspiciouslyShrunk = fileExisted && looksSuspiciouslyShrunk(oldContent, args.content);
+
+  if (autoMode) {
+    const check = passesSyntaxCheck(args.path, args.content);
+    const importCheck = checkLocalImportsExist(args.path, args.content);
+    const placeholderCheck = checkForLazyPlaceholder(args.path, args.content);
+    if (check.checked && !check.ok) {
+      return autoDenyAndContinue(`Ghi file: ${args.path}`, `Nội dung định ghi bị lỗi cú pháp: ${check.error}`, { fixable: true });
+    } else if (placeholderCheck.checked && !placeholderCheck.ok) {
+      return autoDenyAndContinue(`Ghi file: ${args.path}`, placeholderCheck.error, { fixable: true });
+    } else if (importCheck.checked && !importCheck.ok) {
+      return autoDenyAndContinue(`Ghi file: ${args.path}`, importCheck.error, { fixable: true });
+    } else if (suspiciouslyShrunk) {
+      return autoDenyAndContinue(`Ghi file: ${args.path}`, `Nội dung mới NGẮN HƠN NHIỀU so với bản cũ (${args.content.length} vs ${oldContent.length} ký tự), nghi ngờ bị cắt xén nhầm.`, { fixable: true });
+    } else {
+      const reason = check.checked ? 'đã qua kiểm tra cú pháp' : 'không phải file JS/JSON, bỏ qua kiểm tra cú pháp';
+      console.log(c.green(`   🤖 [AUTO] Tự động đồng ý ghi file (${reason}).`));
+      try {
+        const backupPath = doWrite();
+        logAction({ label: `[AUTO] Ghi file: ${args.path}`, status: 'ok' });
+        return { success: true, backup_path: backupPath || undefined };
+      } catch (err) {
+        logAction({ label: `[AUTO] Ghi file: ${args.path}`, status: 'fail' });
+        return { success: false, error: err.message };
+      }
+    }
+  }
+
+  if (suspiciouslyShrunk) {
+    console.log(c.red(`   ⚠️  CẢNH BÁO: nội dung mới chỉ dài ${args.content.length} ký tự, trong khi file cũ dài ${oldContent.length} ký tự.`));
+    console.log(c.red(`   Rất có thể AI đã viết thiếu/tóm tắt thay vì giữ nguyên toàn bộ nội dung không liên quan. Hãy xem kỹ diff phía trên trước khi đồng ý!`));
+  }
+
+  const confirm = await ask(c.yellow(`Đồng ý ghi file này? (y/n): `));
+  if (confirm.trim().toLowerCase() !== 'y') {
+    console.log(c.red('   ❌ Đã huỷ, không ghi file.'));
+    logAction({ label: `Ghi file: ${args.path} (bị từ chối)`, status: 'fail' });
+    return { success: false, error: 'Người dùng từ chối thực hiện thao tác này.' };
+  }
+
+  try {
+    const backupPath = doWrite();
+    logAction({ label: `Ghi file: ${args.path}`, status: 'ok' });
+    return { success: true, backup_path: backupPath || undefined };
+  } catch (err) {
+    logAction({ label: `Ghi file: ${args.path}`, status: 'fail' });
+    return { success: false, error: err.message };
+  }
+}
+
+// ✏️ Sửa file AN TOÀN kiểu str_replace: chỉ thay đúng 1 đoạn old_str -> new_str, giữ nguyên 100% phần còn lại.
+// Bắt buộc old_str khớp CHÍNH XÁC và DUY NHẤT trong file, tránh sửa nhầm chỗ hoặc sửa nhầm nhiều chỗ giống nhau.
+async function executeStrReplaceFile(args) {
+  if (isOutsideLockedRoot(args.path)) {
+    console.log(c.red(`\n📌 BỊ CHẶN: "${args.path}" nằm NGOÀI thư mục đã khoá bằng /workdir ("${lockedProjectRoot}").`));
+    logAction({ label: `Sửa file: ${args.path} (bị chặn - ngoài /workdir)`, status: 'fail' });
+    return { success: false, error: lockedRootError(args.path) };
+  }
+  if (isProtectedPath(args.path)) {
+    console.log(c.red(`\n🔒 BỊ CHẶN: "${args.path}" nằm trong danh sách CẤM TUYỆT ĐỐI (AGENT_PROTECTED_PATHS).`));
+    logAction({ label: `Sửa file: ${args.path} (bị chặn - protected path)`, status: 'fail' });
+    return { success: false, error: protectedPathError(args.path) };
+  }
+  if (isBinaryPath(args.path)) {
+    logAction({ label: `Sửa file: ${args.path} (bị chặn - file nhị phân)`, status: 'fail' });
+    return { success: false, error: binaryGuardError(args.path) };
+  }
+  if (!fs.existsSync(args.path)) {
+    logAction({ label: `Sửa file: ${args.path} (không tồn tại)`, status: 'fail' });
+    return { success: false, error: `File không tồn tại: ${args.path}. Nếu muốn tạo file mới, dùng write_file.` };
+  }
+
+  const oldContent = fs.readFileSync(args.path, 'utf-8');
+  const oldStr = args.old_str ?? '';
+  const newStr = args.new_str ?? '';
+
+  if (!oldStr) {
+    return { success: false, error: 'old_str rỗng. Phải cung cấp đúng đoạn text hiện có trong file (đọc file trước để copy chính xác).' };
+  }
+
+  const occurrences = oldContent.split(oldStr).length - 1;
+  if (occurrences === 0) {
+    logAction({ label: `Sửa file: ${args.path} (không tìm thấy old_str)`, status: 'fail' });
+    return { success: false, error: 'Không tìm thấy old_str trong file. Có thể bạn gõ sai/thiếu khoảng trắng hoặc thụt lề — hãy dùng read_file để đọc lại chính xác đoạn cần sửa rồi copy nguyên văn.' };
+  }
+  if (occurrences > 1) {
+    logAction({ label: `Sửa file: ${args.path} (old_str không duy nhất, xuất hiện ${occurrences} lần)`, status: 'fail' });
+    return { success: false, error: `old_str xuất hiện ${occurrences} lần trong file, không duy nhất -> có thể sửa nhầm chỗ. Hãy thêm ngữ cảnh (dòng trước/sau) vào old_str để nó chỉ khớp đúng 1 vị trí cần sửa.` };
+  }
+
+  const newContent = oldContent.replace(oldStr, newStr);
+
+  console.log(c.yellow(`\n⚠️  AI muốn SỬA 1 đoạn trong file: ${c.bold(args.path)}`));
+  console.log(c.gray(`--- Thay đổi (diff) ---`));
+  printDiff(computeLineDiff(oldContent, newContent), 2);
+  console.log(c.gray(`------------------------`));
+
+  const doReplace = () => {
+    const backupPath = backupFile(args.path);
+    fs.writeFileSync(args.path, newContent, 'utf-8');
+    if (backupPath) lastBackup = { backupPath, targetPath: args.path }; // để /undo dùng lại
+    const verify = fs.readFileSync(args.path, 'utf-8');
+    if (verify !== newContent) {
+      console.log(c.red(`   ⚠️ CẢNH BÁO: đọc lại file sau khi sửa KHÔNG khớp với nội dung định ghi! (có thể do lỗi hệ thống)`));
+    } else {
+      console.log(c.green(`   ✅ Đã sửa file: ${args.path} (đã xác minh đọc lại khớp 100%)`));
+    }
+    if (backupPath) console.log(c.gray(`   🗄️  Đã backup bản cũ tại: ${backupPath}`));
+    return backupPath;
+  };
+
+  if (autoMode) {
+    const check = passesSyntaxCheck(args.path, newContent);
+    const importCheck = checkLocalImportsExist(args.path, newContent);
+    const placeholderCheck = checkForLazyPlaceholder(args.path, newStr);
+    if (check.checked && !check.ok) {
+      return autoDenyAndContinue(`Sửa file: ${args.path}`, `Nội dung sau khi sửa bị lỗi cú pháp: ${check.error}`, { fixable: true });
+    } else if (placeholderCheck.checked && !placeholderCheck.ok) {
+      return autoDenyAndContinue(`Sửa file: ${args.path}`, placeholderCheck.error, { fixable: true });
+    } else if (importCheck.checked && !importCheck.ok) {
+      return autoDenyAndContinue(`Sửa file: ${args.path}`, importCheck.error, { fixable: true });
+    } else {
+      const reason = check.checked ? 'đã qua kiểm tra cú pháp (node --check)' : 'không phải file JS, bỏ qua kiểm tra cú pháp';
+      console.log(c.green(`   🤖 [AUTO] Tự động đồng ý sửa file (${reason}).`));
+      try {
+        const backupPath = doReplace();
+        logAction({ label: `[AUTO] Sửa file: ${args.path}`, status: 'ok' });
+        return { success: true, backup_path: backupPath || undefined };
+      } catch (err) {
+        logAction({ label: `[AUTO] Sửa file: ${args.path}`, status: 'fail' });
+        return { success: false, error: err.message };
+      }
+    }
+  }
+
+  const confirm = await ask(c.yellow(`Đồng ý sửa file này? (y/n): `));
+  if (confirm.trim().toLowerCase() !== 'y') {
+    console.log(c.red('   ❌ Đã huỷ, không sửa file.'));
+    logAction({ label: `Sửa file: ${args.path} (bị từ chối)`, status: 'fail' });
+    return { success: false, error: 'Người dùng từ chối thực hiện thao tác này.' };
+  }
+
+  try {
+    const backupPath = doReplace();
+    logAction({ label: `Sửa file: ${args.path}`, status: 'ok' });
+    return { success: true, backup_path: backupPath || undefined };
+  } catch (err) {
+    logAction({ label: `Sửa file: ${args.path}`, status: 'fail' });
+    return { success: false, error: err.message };
+  }
+}
+
+// 🗑️ Xoá file - LUÔN backup trước khi xoá (để /undo khôi phục được nếu cần).
+// File do CHÍNH agent tạo trong phiên này (filesCreatedThisSession) -> auto mode tự xoá được (dọn rác an toàn).
+// File đã có sẵn từ trước (không phải agent tạo) -> auto mode KHÔNG tự xoá, coi như rủi ro cao, auto-deny + báo cho người dùng.
+async function executeDeleteFile(args) {
+  if (isOutsideLockedRoot(args.path)) {
+    console.log(c.red(`\n📌 BỊ CHẶN: "${args.path}" nằm NGOÀI thư mục đã khoá bằng /workdir ("${lockedProjectRoot}").`));
+    logAction({ label: `Xoá file: ${args.path} (bị chặn - ngoài /workdir)`, status: 'fail' });
+    return { success: false, error: lockedRootError(args.path) };
+  }
+  if (isProtectedPath(args.path)) {
+    console.log(c.red(`\n🔒 BỊ CHẶN: "${args.path}" nằm trong danh sách CẤM TUYỆT ĐỐI (AGENT_PROTECTED_PATHS).`));
+    logAction({ label: `Xoá file: ${args.path} (bị chặn - protected path)`, status: 'fail' });
+    return { success: false, error: protectedPathError(args.path) };
+  }
+  if (!fs.existsSync(args.path)) {
+    return { success: false, error: `File không tồn tại: ${args.path} (có thể đã bị xoá từ trước, không cần làm gì thêm).` };
+  }
+
+  const resolvedPath = path.resolve(args.path);
+  const isOwnFile = filesCreatedThisSession.has(resolvedPath);
+
+  const doDelete = () => {
+    const backupPath = backupFile(args.path);
+    fs.unlinkSync(args.path);
+    filesCreatedThisSession.delete(resolvedPath);
+    if (backupPath) lastBackup = { backupPath, targetPath: args.path }; // để /undo khôi phục lại nếu xoá nhầm
+    return backupPath;
+  };
+
+  if (autoMode) {
+    if (isOwnFile) {
+      console.log(c.green(`   🤖 [AUTO] Tự động xoá file rác do chính agent tạo ra trong phiên này: ${args.path} (${args.reason})`));
+      try {
+        const backupPath = doDelete();
+        console.log(c.green(`   ✅ Đã xoá: ${args.path}${backupPath ? ` (đã backup tại ${backupPath})` : ''}`));
+        logAction({ label: `[AUTO] Xoá file: ${args.path} (${args.reason})`, status: 'ok' });
+        return { success: true, backup_path: backupPath || undefined };
+      } catch (err) {
+        console.log(c.red(`   ⚠️ Xoá thất bại: ${args.path} — ${err.message}`));
+        logAction({ label: `[AUTO] Xoá file: ${args.path}`, status: 'fail' });
+        return { success: false, error: err.message };
+      }
+    }
+    return autoDenyAndContinue(`Xoá file: ${args.path}`, `Đây là file KHÔNG phải do agent tạo ra trong phiên làm việc này (có thể là file quan trọng có sẵn) - lý do định xoá: "${args.reason}".`, { fixable: false });
+  }
+
+  console.log(c.yellow(`\n⚠️  AI muốn XOÁ file: ${c.bold(args.path)}`));
+  console.log(c.gray(`   Lý do: ${args.reason}`));
+  const confirm = await ask(c.yellow('Đồng ý xoá file này? (y/n): '));
+  if (confirm.trim().toLowerCase() !== 'y') {
+    logAction({ label: `Xoá file: ${args.path}`, status: 'fail' });
+    return { success: false, error: 'Người dùng từ chối xoá file này.' };
+  }
+
+  try {
+    const backupPath = doDelete();
+    console.log(c.green(`   ✅ Đã xoá: ${args.path}${backupPath ? ` (đã backup tại ${backupPath})` : ''}`));
+    logAction({ label: `Xoá file: ${args.path}`, status: 'ok' });
+    return { success: true, backup_path: backupPath || undefined };
+  } catch (err) {
+    console.log(c.red(`   ⚠️ Xoá thất bại: ${args.path} — ${err.message}`));
+    logAction({ label: `Xoá file: ${args.path}`, status: 'fail' });
+    return { success: false, error: err.message };
+  }
+}
+
+// 💻 Chạy lệnh - Auto mode: tự chạy nếu lệnh KHÔNG nằm trong danh sách nguy hiểm. Lệnh nguy hiểm -> luôn hỏi thủ công.
+async function executeRunCommand(args) {
+  console.log(c.yellow(`\n⚠️  AI muốn CHẠY LỆNH: ${c.bold(args.command)}`));
+
+  if (autoMode) {
+    if (isDangerousCommand(args.command)) {
+      return autoDenyAndContinue(`Chạy lệnh: ${args.command}`, `Lệnh "${args.command}" thuộc nhóm RỦI RO CAO (có thể xoá/ghi đè dữ liệu, thay đổi hệ thống không thể hoàn tác...).`);
+    } else {
+      console.log(c.green(`   🤖 [AUTO] Tự động đồng ý chạy lệnh (không phát hiện rủi ro).`));
+      try {
+        const output = execSync(args.command, { encoding: 'utf-8', timeout: 60000, maxBuffer: 1024 * 1024 * 5 });
+        console.log(c.gray(`   ✅ Kết quả:\n${output.slice(0, 2000)}`));
+        logAction({ label: `[AUTO] Chạy lệnh: ${args.command}`, status: 'ok' });
+        return { success: true, output: output.slice(0, 5000) };
+      } catch (err) {
+        const errOutput = (err.stdout || '') + (err.stderr || err.message);
+        console.log(c.red(`   ⚠️ Lỗi khi chạy lệnh:\n${errOutput.slice(0, 2000)}`));
+        logAction({ label: `[AUTO] Chạy lệnh: ${args.command}`, status: 'fail' });
+        return { success: false, error: errOutput.slice(0, 3000) };
+      }
+    }
+  }
+
+  const confirm = await ask(c.yellow(`Đồng ý chạy lệnh này? (y/n): `));
+  if (confirm.trim().toLowerCase() !== 'y') {
+    console.log(c.red('   ❌ Đã huỷ, không chạy lệnh.'));
+    logAction({ label: `Chạy lệnh: ${args.command} (bị từ chối)`, status: 'fail' });
+    return { success: false, error: 'Người dùng từ chối thực hiện thao tác này.' };
+  }
+
+  try {
+    const output = execSync(args.command, { encoding: 'utf-8', timeout: 60000, maxBuffer: 1024 * 1024 * 5 });
+    console.log(c.gray(`   ✅ Kết quả:\n${output.slice(0, 2000)}`));
+    logAction({ label: `Chạy lệnh: ${args.command}`, status: 'ok' });
+    return { success: true, output: output.slice(0, 5000) };
+  } catch (err) {
+    const errOutput = (err.stdout || '') + (err.stderr || err.message);
+    console.log(c.red(`   ⚠️ Lỗi khi chạy lệnh:\n${errOutput.slice(0, 2000)}`));
+    logAction({ label: `Chạy lệnh: ${args.command}`, status: 'fail' });
+    return { success: false, error: errOutput.slice(0, 3000) };
+  }
+}
+
+// 🔎 Tìm kiếm web bằng Tavily - an toàn (chỉ đọc), không cần hỏi xác nhận
+// Tự động xoay qua TẤT CẢ các TAVILY_API_KEY_* nếu key đang dùng bị lỗi quota/rate-limit/không hợp lệ.
+async function executeSearchWeb(args) {
+  if (TAVILY_KEYS.length === 0) {
+    return { success: false, error: 'Chưa cấu hình TAVILY_API_KEY nào trong file .env' };
+  }
+
+  const maxAttempts = TAVILY_KEYS.length;
+  let lastError = null;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      const response = await fetch('https://api.tavily.com/search', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          api_key: currentTavilyKey(),
+          query: args.query,
+          search_depth: 'basic',
+          max_results: 5,
+          include_answer: true
+        })
+      });
+
+      if (!response.ok) {
+        const isQuotaLike = response.status === 429 || response.status === 401 || response.status === 403;
+        lastError = `Tavily HTTP ${response.status} (key #${tavilyKeyIndex + 1})`;
+        if (isQuotaLike && attempt < maxAttempts) {
+          console.log(c.yellow(`   ⚠️ Tavily key #${tavilyKeyIndex + 1} lỗi HTTP ${response.status}, chuyển sang key kế tiếp...`));
+          tavilyKeyIndex = (tavilyKeyIndex + 1) % TAVILY_KEYS.length;
+          continue;
+        }
+        logAction({ label: `Search: "${args.query}"`, status: 'fail' });
+        return { success: false, error: lastError };
+      }
+
+      const data = await response.json();
+      console.log(c.gray(`   🔎 Đã search: "${args.query}" (${data.results?.length || 0} kết quả, key #${tavilyKeyIndex + 1})`));
+      logAction({ label: `Search: "${args.query}"`, status: 'ok' });
+
+      const parts = [];
+      if (data.answer) parts.push(`Tóm tắt: ${data.answer}`);
+      if (Array.isArray(data.results)) {
+        parts.push(data.results.map((r, i) => `${i + 1}. ${r.title}\n${r.content?.slice(0, 300)}\nNguồn: ${r.url}`).join('\n\n'));
+      }
+
+      return { success: true, result: parts.join('\n\n').slice(0, 6000) };
+    } catch (err) {
+      lastError = err.message;
+      if (attempt < maxAttempts) {
+        console.log(c.yellow(`   ⚠️ Tavily key #${tavilyKeyIndex + 1} lỗi (${err.message}), chuyển sang key kế tiếp...`));
+        tavilyKeyIndex = (tavilyKeyIndex + 1) % TAVILY_KEYS.length;
+        continue;
+      }
+      logAction({ label: `Search: "${args.query}"`, status: 'fail' });
+      return { success: false, error: lastError };
+    }
+  }
+
+  logAction({ label: `Search: "${args.query}"`, status: 'fail' });
+  return { success: false, error: lastError || 'Tất cả Tavily key đều lỗi.' };
+}
+
+// 🖼️ Đọc ảnh (OCR) bằng Tesseract.js - chỉ đọc, an toàn, không cần hỏi xác nhận
+async function executeReadImage(args) {
+  const imgPath = path.resolve(args.path);
+  const lang = args.lang || 'eng';
+
+  if (!fs.existsSync(imgPath)) {
+    logAction({ label: `Đọc ảnh: ${args.path} (không tìm thấy file)`, status: 'fail' });
+    return { success: false, error: `Không tìm thấy file ảnh: ${imgPath}` };
+  }
+
+  console.log(c.gray(`   🖼️  Đang OCR ảnh: ${imgPath} (lang=${lang})...`));
+  try {
+    // Nếu có sẵn thư mục tessdata cục bộ (chứa các file .traineddata) thì ưu tiên dùng offline,
+    // không thì để Tesseract.js tự tải/dùng cache mặc định.
+    const localTessdata = path.join(process.cwd(), 'tessdata');
+    const options = { logger: () => {} }; // tắt log chi tiết từng % để không rác console của agent
+    if (fs.existsSync(localTessdata)) options.langPath = localTessdata;
+
+    const { data: { text } } = await Tesseract.recognize(imgPath, lang, options);
+    const trimmed = (text || '').trim();
+
+    console.log(c.gray(`   ✅ OCR xong: ${imgPath} (${trimmed.length} ký tự nhận diện được)`));
+    logAction({ label: `Đọc ảnh (OCR): ${args.path}`, status: 'ok' });
+
+    if (!trimmed) {
+      return { success: true, content: '', warning: 'Không nhận diện được chữ nào trong ảnh (ảnh có thể không chứa văn bản, hoặc chất lượng ảnh quá thấp).' };
+    }
+    return { success: true, content: trimmed.slice(0, 15000) };
+  } catch (err) {
+    console.log(c.red(`   ⚠️ Lỗi khi OCR ảnh: ${err.message}`));
+    logAction({ label: `Đọc ảnh (OCR): ${args.path}`, status: 'fail' });
+    return { success: false, error: err.message };
+  }
+}
+
+// 👁️ Xem ảnh (multimodal) bằng chính Gemini - mô tả người/vật/khung cảnh, KHÁC với OCR đọc chữ
+const IMG_MIME_BY_EXT = {
+  '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png',
+  '.webp': 'image/webp', '.gif': 'image/gif', '.bmp': 'image/bmp'
+};
+
+async function executeDescribeImage(args) {
+  const imgPath = path.resolve(args.path);
+  const ext = path.extname(imgPath).toLowerCase();
+  const mimeType = IMG_MIME_BY_EXT[ext];
+
+  if (!fs.existsSync(imgPath)) {
+    logAction({ label: `Xem ảnh: ${args.path} (không tìm thấy file)`, status: 'fail' });
+    return { success: false, error: `Không tìm thấy file ảnh: ${imgPath}` };
+  }
+  if (!mimeType) {
+    logAction({ label: `Xem ảnh: ${args.path} (định dạng không hỗ trợ)`, status: 'fail' });
+    return { success: false, error: `Định dạng ảnh không hỗ trợ: ${ext || '(không rõ)'}. Hỗ trợ: jpg, jpeg, png, webp, gif, bmp.` };
+  }
+
+  console.log(c.gray(`   👁️  Đang nhờ Gemini xem ảnh: ${imgPath}...`));
+  try {
+    const imageBase64 = fs.readFileSync(imgPath).toString('base64');
+    const prompt = args.question?.trim()
+      ? args.question.trim()
+      : 'Mô tả chi tiết bức ảnh này: có người/vật gì, đang làm gì, bối cảnh/khung cảnh ra sao, màu sắc nổi bật, bố cục tổng thể. Trả lời bằng tiếng Việt.';
+
+    // Dùng model độc lập cho lượt gọi này (không đi qua `chat`) để không làm phình lịch sử hội thoại
+    // chính bằng dữ liệu ảnh base64 nặng; chỉ lấy kết quả mô tả (text) trả về cho agent chính.
+    const visionResult = await generateContentWithRetry({
+      contents: [
+        { inlineData: { mimeType, data: imageBase64 } },
+        { text: prompt }
+      ]
+    });
+    const description = visionResult.text.trim();
+
+    console.log(c.gray(`   ✅ Xem ảnh xong: ${imgPath}`));
+    logAction({ label: `Xem ảnh (multimodal): ${args.path}`, status: 'ok' });
+
+    if (!description) {
+      return { success: true, content: '', warning: 'Gemini không trả về mô tả nào cho ảnh này.' };
+    }
+    return { success: true, content: description };
+  } catch (err) {
+    console.log(c.red(`   ⚠️ Lỗi khi xem ảnh: ${err.message}`));
+    logAction({ label: `Xem ảnh (multimodal): ${args.path}`, status: 'fail' });
+    return { success: false, error: err.message };
+  }
+}
+
+// 🧠 Ghi nhớ nhẹ - chỉ append 1 fact ngắn xuống file bộ nhớ, an toàn, không cần hỏi xác nhận
+function executeRememberFact(args) {
+  const factText = (args.fact || '').trim();
+  if (!factText) {
+    return { success: false, error: 'Fact rỗng, không có gì để ghi nhớ.' };
+  }
+
+  const entry = { time: new Date().toLocaleString('vi-VN'), text: factText };
+  memory.facts.push(entry);
+  if (memory.facts.length > MAX_MEMORY_FACTS) {
+    memory.facts = memory.facts.slice(-MAX_MEMORY_FACTS); // chỉ giữ N fact gần nhất, giữ bộ nhớ nhẹ
+  }
+  const saved = saveMemory();
+
+  if (saved) {
+    console.log(c.gray(`   🧠 Đã ghi nhớ: "${factText.slice(0, 100)}"`));
+    logAction({ label: `Ghi nhớ: "${factText.slice(0, 60)}"`, status: 'ok' });
+    sessionNewFacts.push(factText); // để các lượt hỏi tiếp theo trong phiên này cũng biết fact mới
+    return { success: true };
+  } else {
+    logAction({ label: `Ghi nhớ: "${factText.slice(0, 60)}" (lưu file thất bại)`, status: 'fail' });
+    return { success: false, error: 'Ghi vào bộ nhớ thành công trong RAM nhưng lưu file thất bại.' };
+  }
+}
+
+// 🖥️ Chạy 1 đoạn PowerShell, trả về stdout (dùng cho các thao tác UI: chuột, bàn phím, chụp màn hình)
+// ⚠️ QUAN TRỌNG: chạy qua FILE .ps1 tạm (không nhồi script thẳng vào `cmd -Command "..."`).
+// Lý do: khi script chứa đường dẫn có dấu tiếng Việt/khoảng trắng (rất phổ biến trên máy Windows VN,
+// vd "C:\Users\...\làm chơi chơi\..."), nhồi qua cmd.exe -Command dễ bị VỠ ENCODING (bảng mã cmd.exe
+// mặc định trên Windows VN thường không phải UTF-8), khiến PowerShell nhận nhầm ký tự, dẫn tới lưu
+// file sai đường dẫn/thất bại trong im lặng. Ghi ra file .ps1 UTF-8 kèm BOM rồi chạy bằng -File tránh
+// hoàn toàn vấn đề này vì không cần qua bước parse của cmd.exe nữa.
+function runPowerShell(script) {
+  const tmpScriptPath = path.join(os.tmpdir(), `agent_ps_${Date.now()}_${Math.random().toString(36).slice(2)}.ps1`);
+  try {
+    fs.writeFileSync(tmpScriptPath, '\uFEFF' + script, 'utf-8'); // BOM để PowerShell nhận đúng là UTF-8
+    return execSync(`powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "${tmpScriptPath}"`, {
+      encoding: 'utf-8',
+      timeout: 15000,
+      maxBuffer: 1024 * 1024 * 20
+    });
+  } finally {
+    try { fs.unlinkSync(tmpScriptPath); } catch { /* file tạm, không xoá được cũng không sao */ }
+  }
+}
+
+// 🚀 Mở app / file / URL - rủi ro thấp (Windows tự lo phần còn lại), không cần xác nhận
+async function executeOpenApp(args) {
+  // 🛡️FIX#3: trước đây chỉ lọc dấu " rồi NHÉT THẲNG target vào chuỗi execSync qua cmd.exe -
+  // các ký tự &, |, % vẫn có thể bị cmd.exe diễn giải thành lệnh nối tiếp / mở rộng biến môi trường.
+  // Giờ dùng execFileSync gọi thẳng "cmd.exe" với MẢNG tham số -> target luôn được truyền dưới dạng
+  // 1 tham số duy nhất, KHÔNG qua bước shell-parse chuỗi, nên & | % bên trong target không còn ý nghĩa đặc biệt.
+  const target = String(args.target || '').trim();
+  console.log(c.cyan(`   🚀 Đang mở: ${target}`));
+  try {
+    execFileSync('cmd.exe', ['/c', 'start', '""', target], { timeout: 10000, stdio: 'pipe' });
+    logAction({ label: `Mở app/file: ${target}`, status: 'ok' });
+    return { success: true, message: `Đã mở: ${target}` };
+  } catch (err) {
+    logAction({ label: `Mở app/file: ${target}`, status: 'fail' });
+    return { success: false, error: err.message };
+  }
+}
+
+// 📸 Chụp toàn màn hình -> lưu file PNG (tên CỐ ĐỊNH, tự ghi đè lần chụp trước để không tích rác),
+// trả về đường dẫn để agent gọi describe_image phân tích tiếp
+async function executeTakeScreenshot() {
+  const screenshotPath = path.join(process.cwd(), '.agent_screenshot.png');
+  const script = `
+    Add-Type -AssemblyName System.Windows.Forms,System.Drawing
+    $b = [System.Windows.Forms.SystemInformation]::VirtualScreen
+    $bmp = New-Object System.Drawing.Bitmap $b.Width, $b.Height
+    $g = [System.Drawing.Graphics]::FromImage($bmp)
+    $g.CopyFromScreen($b.Location, [System.Drawing.Point]::Empty, $b.Size)
+    $bmp.Save('${screenshotPath.replace(/\\/g, '\\\\')}')
+    $g.Dispose(); $bmp.Dispose()
+  `;
+  try {
+    runPowerShell(script);
+    if (!fs.existsSync(screenshotPath)) throw new Error('Không tạo được file screenshot.');
+    console.log(c.cyan(`   📸 Đã chụp màn hình: ${screenshotPath}`));
+    logAction({ label: `Chụp màn hình`, status: 'ok' });
+    return { success: true, path: screenshotPath, hint: 'Dùng describe_image trên đường dẫn này để xem toạ độ cần click.' };
+  } catch (err) {
+    console.log(c.red(`   ⚠️ Lỗi khi chụp màn hình: ${err.message}`));
+    logAction({ label: `Chụp màn hình`, status: 'fail' });
+    return { success: false, error: err.message };
+  }
+}
+
+// 🖱️ Click chuột theo toạ độ - CHẶN xác nhận thủ công nếu liên quan mua/thanh toán/xoá/đăng xuất..., kể cả đang auto mode
+async function executeMouseClick(args) {
+  const { x, y, button = 'left', description = '' } = args;
+  const risky = isRiskyUIAction(description);
+
+  console.log(c.yellow(`\n⚠️  AI muốn CLICK CHUỘT tại (${x}, ${y}) [${button}] - ${description}`));
+  if (risky) console.log(c.red(`   🛡️ Phát hiện hành động RỦI RO CAO (mua/thanh toán/xoá/đăng xuất...) -> auto sẽ TỰ TỪ CHỐI, tắt auto nếu muốn tự tay xác nhận.`));
+
+  const doClick = () => {
+    const btnFlag = button === 'right' ? '0x0008,0x0010' : '0x0002,0x0004';
+    const [downFlag, upFlag] = btnFlag.split(',');
+    const script = `
+      Add-Type -AssemblyName System.Windows.Forms
+      Add-Type -TypeDefinition '
+        using System;
+        using System.Runtime.InteropServices;
+        public class MouseOps {
+          [DllImport("user32.dll")] public static extern void mouse_event(uint f, int dx, int dy, uint data, int extra);
+          [DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y);
+        }
+      '
+      [MouseOps]::SetCursorPos(${x}, ${y})
+      Start-Sleep -Milliseconds 100
+      [MouseOps]::mouse_event(${downFlag}, 0, 0, 0, 0)
+      Start-Sleep -Milliseconds 50
+      [MouseOps]::mouse_event(${upFlag}, 0, 0, 0, 0)
+    `;
+    runPowerShell(script);
+  };
+
+  if (autoMode) {
+    if (risky) {
+      return autoDenyAndContinue(`Click (${x},${y}): ${description}`, `Hành động click chuột này bị đánh dấu RỦI RO CAO (liên quan mua/thanh toán/xoá/đăng xuất...): "${description}".`);
+    }
+    console.log(c.green(`   🤖 [AUTO] Tự động click (không thuộc nhóm rủi ro cao).`));
+    try {
+      doClick();
+      logAction({ label: `[AUTO] Click (${x},${y}): ${description}`, status: 'ok' });
+      return { success: true, message: `Đã click tại (${x}, ${y}).` };
+    } catch (err) {
+      console.log(c.red(`   ⚠️ Lỗi khi click chuột: ${err.message}`));
+      logAction({ label: `[AUTO] Click (${x},${y}): ${description}`, status: 'fail' });
+      return { success: false, error: err.message };
+    }
+  }
+
+  const confirm = await ask(c.yellow(`Đồng ý click chuột này? (y/n): `));
+  if (confirm.trim().toLowerCase() !== 'y') {
+    console.log(c.red('   ❌ Đã huỷ, không click.'));
+    logAction({ label: `Click (${x},${y}): ${description} (bị từ chối)`, status: 'fail' });
+    return { success: false, error: 'Người dùng từ chối thực hiện thao tác này.' };
+  }
+
+  try {
+    doClick();
+    logAction({ label: `Click (${x},${y}): ${description}`, status: 'ok' });
+    return { success: true, message: `Đã click tại (${x}, ${y}).` };
+  } catch (err) {
+    console.log(c.red(`   ⚠️ Lỗi khi click chuột: ${err.message}`));
+    logAction({ label: `Click (${x},${y}): ${description}`, status: 'fail' });
+    return { success: false, error: err.message };
+  }
+}
+
+// ⌨️ Gõ chữ vào ô đang focus - CHẶN xác nhận thủ công nếu liên quan mua/thanh toán/xoá/đăng xuất..., kể cả đang auto mode
+async function executeTypeText(args) {
+  const { text, description = '' } = args;
+  const risky = isRiskyUIAction(description, text);
+
+  console.log(c.yellow(`\n⚠️  AI muốn GÕ CHỮ: "${text.slice(0, 80)}" - ${description}`));
+  if (risky) console.log(c.red(`   🛡️ Phát hiện hành động RỦI RO CAO (mua/thanh toán/xoá/đăng xuất...) -> auto sẽ TỰ TỪ CHỐI, tắt auto nếu muốn tự tay xác nhận.`));
+
+  // 🛡️FIX#4: chuỗi PowerShell dùng nháy ĐƠN ('...') là literal tuyệt đối - KHÔNG diễn giải backtick/$()
+  // như nháy đôi, nên không có đường injection PowerShell qua đây (đã kiểm chứng lại kỹ).
+  // Nhưng SendKeys có NGÔN NGỮ KÝ TỰ ĐẶC BIỆT RIÊNG (+ ^ % ~ ( ) { } [ ]) độc lập với PowerShell -
+  // nếu không escape đúng chuẩn, các ký tự này sẽ bị hiểu nhầm thành tổ hợp phím (Shift/Ctrl/Alt...)
+  // thay vì gõ ra đúng ký tự đó -> có thể gây gõ sai mật khẩu, hoặc vô tình bấm nhầm phím tắt nguy hiểm.
+  const sendKeysEscaped = text.replace(/([+^%~(){}\[\]])/g, '{$1}');
+  const escaped = sendKeysEscaped.replace(/'/g, "''");
+  const script = `
+    Add-Type -AssemblyName System.Windows.Forms
+    Start-Sleep -Milliseconds 100
+    [System.Windows.Forms.SendKeys]::SendWait('${escaped}')
+  `;
+
+  if (autoMode) {
+    if (risky) {
+      return autoDenyAndContinue(`Gõ chữ: ${description}`, `Hành động gõ chữ này bị đánh dấu RỦI RO CAO (liên quan mua/thanh toán/xoá/đăng xuất...): "${description}".`);
+    }
+    console.log(c.green(`   🤖 [AUTO] Tự động gõ chữ (không thuộc nhóm rủi ro cao).`));
+    try {
+      runPowerShell(script);
+      logAction({ label: `[AUTO] Gõ chữ: ${description}`, status: 'ok' });
+      return { success: true, message: 'Đã gõ xong.' };
+    } catch (err) {
+      console.log(c.red(`   ⚠️ Lỗi khi gõ chữ: ${err.message}`));
+      logAction({ label: `[AUTO] Gõ chữ: ${description}`, status: 'fail' });
+      return { success: false, error: err.message };
+    }
+  }
+
+  const confirm = await ask(c.yellow(`Đồng ý gõ chữ này? (y/n): `));
+  if (confirm.trim().toLowerCase() !== 'y') {
+    console.log(c.red('   ❌ Đã huỷ, không gõ.'));
+    logAction({ label: `Gõ chữ: ${description} (bị từ chối)`, status: 'fail' });
+    return { success: false, error: 'Người dùng từ chối thực hiện thao tác này.' };
+  }
+
+  try {
+    runPowerShell(script);
+    logAction({ label: `Gõ chữ: ${description}`, status: 'ok' });
+    return { success: true, message: 'Đã gõ xong.' };
+  } catch (err) {
+    console.log(c.red(`   ⚠️ Lỗi khi gõ chữ: ${err.message}`));
+    logAction({ label: `Gõ chữ: ${description}`, status: 'fail' });
+    return { success: false, error: err.message };
+  }
+}
+
+// 📋 Ghi/cập nhật kế hoạch dự án - không cần xác nhận (chỉ là ghi chú kế hoạch, không đụng file/lệnh thật)
+function executeUpdatePlan(args) {
+  currentPlan = args.plan_markdown || '';
+  savePlan(currentPlan);
+  console.log(c.cyan(`   📋 Đã cập nhật kế hoạch (${currentPlan.split('\n').length} dòng) -> lưu tại ${PLAN_FILE}`));
+  logAction({ label: `Cập nhật kế hoạch dự án`, status: 'ok' });
+  return { success: true, message: 'Đã lưu kế hoạch, sẽ được nhắc lại ở các lượt chat tiếp theo.' };
+}
+
+async function executeFunctionCall(call) {
+  const { name, args } = call;
+  console.log(c.cyan(`\n🔧 Gọi công cụ: ${name}(${JSON.stringify(args).slice(0, 150)})`));
+
+  if (name === 'read_file') return executeReadFile(args);
+  if (name === 'write_file') return await executeWriteFile(args);
+  if (name === 'str_replace_file') return await executeStrReplaceFile(args);
+  if (name === 'delete_file') return await executeDeleteFile(args);
+  if (name === 'run_command') return await executeRunCommand(args);
+  if (name === 'search_web') return await executeSearchWeb(args);
+  if (name === 'read_image') return await executeReadImage(args);
+  if (name === 'describe_image') return await executeDescribeImage(args);
+  if (name === 'remember_fact') return executeRememberFact(args);
+  if (name === 'open_app') return await executeOpenApp(args);
+  if (name === 'take_screenshot') return await executeTakeScreenshot();
+  if (name === 'mouse_click') return await executeMouseClick(args);
+  if (name === 'type_text') return await executeTypeText(args);
+  if (name === 'update_plan') return executeUpdatePlan(args);
+
+  return { success: false, error: `Công cụ không tồn tại: ${name}` };
+}
+
+const baseSystemInstruction = `
+Mày là 1 coding agent chạy trực tiếp trên máy người dùng, có quyền đọc/ghi file, chạy lệnh terminal thật, đọc ảnh (OCR), ghi nhớ nhẹ, và tìm kiếm web thông qua các tool được cung cấp.
+Hệ điều hành máy đang chạy: ${OS_INFO} — LUÔN dùng lệnh terminal đúng hệ điều hành này, không đoán mò lệnh Unix trên Windows hay ngược lại.
+QUAN TRỌNG - KHÔNG ĐƯỢC TỪ CHỐI VÌ "KHÔNG BIẾT MÁY CÓ GÌ": mày CÓ TOÀN QUYỀN chạy lệnh thật trên máy người dùng để tự kiểm tra, KHÔNG được nói kiểu "tôi không biết máy bạn có cài X không" hay "bạn tự cài/tự mở giúp tôi" rồi dừng lại đó. Ở đầu MỖI tin nhắn có sẵn 1 khối "[Hồ sơ máy]" liệt kê các công cụ dev phổ biến đã quét sẵn (node, python, git, docker...) - LUÔN xem qua khối đó trước, nếu công cụ cần dùng đã có trong đó thì dùng luôn không cần dò lại. Chỉ khi công cụ cần dùng KHÔNG có trong hồ sơ máy (ngoài danh sách quét, hoặc người dùng vừa cài thêm sau khi quét) thì mới cần PHẢI tự làm theo trình tự:
+  1. Dùng run_command để tự dò trước khi kết luận: kiểm tra lệnh có tồn tại (vd trên Windows: "where node", "where python", "where git", "npm -v", "python --version"), hoặc liệt kê để tìm (vd: "dir C:\\Program Files", tìm theo tên trong PATH).
+  2. Nếu cần MỞ app/file/website: cứ gọi thẳng open_app với đường dẫn/tên hợp lý nhất (file cụ thể, hoặc tên lệnh nếu app đó có trong PATH như "code", "notepad", hoặc đường dẫn .exe nếu biết) - THỬ trước, đừng hỏi lại "bạn có cài chưa" khi chưa thử.
+  3. Nếu thử mà lỗi (not found, access denied...) -> ĐỌC lỗi thật để biết chính xác lý do, rồi tự đề xuất cách khắc phục cụ thể (cài qua lệnh gì, đường dẫn đúng là gì) thay vì báo chung chung "không mở được" rồi bỏ đó.
+  Chỉ khi đã THỬ THẬT và có bằng chứng rõ ràng (output lỗi cụ thể) mới được kết luận máy thiếu gì, và luôn kèm hướng khắc phục cụ thể (lệnh cài đặt, đường dẫn cần sửa...), không trả lời chung chung.
+Nguyên tắc làm việc:
+- KHI ĐƯỜNG DẪN FILE/THƯ MỤC KHÔNG TỒN TẠI ("cannot find the file specified", "no such file", "not found"...): thử lại TỐI ĐA 1 LẦN với 1 cách đoán hợp lý khác (vd: kiểm tra thư mục cha gần nhất mà người dùng vừa nhắc tới trong hội thoại). Nếu vẫn không tìm thấy, DỪNG LẠI và HỎI THẲNG người dùng đường dẫn chính xác — TUYỆT ĐỐI KHÔNG tự ý dò mù bằng cách liệt kê (dir/ls) các thư mục lớn, không liên quan, hoặc toàn bộ ổ đĩa/thư mục gốc (vd: liệt kê cả C:\\Users\\...\\Downloads) để "tìm thử xem có đâu đó không" — việc này vừa chậm, vừa bắt người dùng xác nhận (y/n) nhiều lần vô ích, vừa dò vào những nơi không liên quan tới yêu cầu ban đầu. Hỏi lại 1 câu ngắn gọn luôn nhanh và chính xác hơn nhiều so với đoán mò.
+- CHỈ gọi tool khi yêu cầu thực sự cần (đọc/sửa file cụ thể, chạy lệnh cụ thể, tìm kiếm thông tin cụ thể, mở app/thao tác UI cụ thể). Nếu người dùng chỉ chào hỏi (hello, chào, hi, alo...), hỏi han xã giao, hoặc trò chuyện không liên quan tới code/file/lệnh, TUYỆT ĐỐI KHÔNG tự ý gọi bất kỳ tool nào (đặc biệt run_command, read_file) để "thăm dò" thư mục làm việc hay đoán ý — chỉ cần trả lời trò chuyện bình thường, ngắn gọn, tự nhiên. Chỉ khi nào câu hỏi mơ hồ nhưng RÕ RÀNG liên quan tới dự án/file (ví dụ "xem giúp tôi code đang sao rồi") thì mới cần chủ động đọc file để trả lời.
+- Luôn ĐỌC file liên quan trước khi sửa (dùng read_file), để biết chính xác nội dung hiện tại, không đoán mò, không gõ lại theo trí nhớ.
+- ƯU TIÊN TUYỆT ĐỐI dùng str_replace_file để sửa file đã tồn tại: chỉ thay đúng đoạn cần đổi (old_str -> new_str), giữ nguyên 100% phần còn lại, tránh phá format/gõ sai nội dung không liên quan. old_str phải copy CHÍNH XÁC từ kết quả read_file (kể cả khoảng trắng, thụt lề) và phải DUY NHẤT trong file — nếu file có nhiều đoạn giống nhau, thêm dòng ngữ cảnh trước/sau vào old_str để nó chỉ khớp đúng 1 chỗ.
+- CHỈ dùng write_file khi: tạo file HOÀN TOÀN MỚI, hoặc người dùng yêu cầu rõ ràng viết lại/ghi đè toàn bộ file. Khi dùng write_file cho file đã có nội dung, phải GHI LẠI TOÀN BỘ nội dung file (đầy đủ, không rút gọn, không viết "// giữ nguyên phần còn lại"), vì nó sẽ GHI ĐÈ toàn bộ file — nhưng đây là lựa chọn CUỐI, không phải mặc định.
+- TUYỆT ĐỐI không dùng read_file/write_file/str_replace_file với file nhị phân (.docx, .xlsx, .pptx, .pdf, ảnh, file nén, v.v.) — các tool này đọc/ghi theo kiểu text nên sẽ làm HỎNG cấu trúc file nhị phân. Nếu người dùng cần sửa loại file này, báo rõ là agent hiện tại không hỗ trợ, cần công cụ chuyên dụng khác.
+- Nếu 1 lần gọi str_replace_file bị lỗi vì old_str không duy nhất hoặc không khớp, đọc lại file (read_file) để lấy đúng đoạn text hiện tại rồi thử lại, không đoán mò lần 2.
+- Dùng search_web khi gặp lỗi lạ chưa chắc chắn cách fix, cần tra cú pháp/API mới, hoặc cần thông tin cập nhật (phiên bản thư viện, breaking changes...) mà kiến thức có sẵn có thể đã cũ.
+- Dùng read_image khi người dùng đưa đường dẫn ảnh và cần biết CHỮ trong ảnh đó (screenshot lỗi, ảnh scan tài liệu, văn bản...) — đây là OCR thuần, không "hiểu" ảnh.
+- Dùng describe_image khi người dùng muốn biết ảnh CÓ GÌ (người, vật, phong cảnh, hành động, màu sắc, bố cục...) — dùng khả năng xem ảnh multimodal của Gemini, không phải OCR. Nếu không chắc người dùng cần loại nào, có thể gọi cả 2 rồi tổng hợp.
+- Dùng remember_fact để lưu lại những thông tin quan trọng, mang tính lâu dài về dự án hoặc theo dặn dò của người dùng (ví dụ "nhớ giúp tôi..."), KHÔNG dùng để lưu những thứ vụn vặt, chỉ dùng 1 lần.
+- TỰ DỌN RÁC, đừng để người dùng phải dọn thay bạn: nếu trong lúc làm việc bạn tạo ra file thử-sai rồi bỏ (thử cách A không được, chuyển sang cách B), file trùng lặp, file tạm/không còn cần dùng nữa -> chủ động dùng delete_file để xoá nó đi TRƯỚC KHI báo hoàn thành, không để lại rác trong thư mục dự án. Không hỏi xin phép người dùng trước mỗi lần dọn loại rác do chính bạn tạo ra - cứ dọn rồi báo lại ngắn gọn đã xoá gì (đã có backup tự động nên an toàn để khôi phục nếu cần).
+- HẠN CHẾ HỎI LẠI NGƯỜI DÙNG NHỮNG CÂU VỤN VẶT: nếu có thể tự suy luận ra 1 phương án hợp lý (dựa vào ngữ cảnh, quy ước phổ biến, hoặc đơn giản là thử 1 cách rồi xem kết quả), CỨ LÀM LUÔN thay vì dừng lại hỏi xin xác nhận thêm chi tiết. Chỉ thực sự hỏi lại khi thông tin thiếu là THỰC SỰ QUAN TRỌNG và không có cách nào đoán hợp lý được (vd: yêu cầu quá mơ hồ tới mức làm sai hướng hoàn toàn, hoặc liên quan tới hành động phá huỷ dữ liệu không thể hoàn tác). Người dùng ghét bị hỏi nhiều câu lặt vặt.
+- Dùng open_app để mở app/file/website theo yêu cầu người dùng.
+- Khi cần thao tác trong 1 app (click, gõ chữ): LUÔN take_screenshot rồi describe_image trên ảnh vừa chụp để xác định toạ độ chính xác TRƯỚC KHI gọi mouse_click — tuyệt đối không đoán mò toạ độ. Sau khi click vào ô nhập liệu, mới gọi type_text để gõ. Luôn mô tả rõ ràng, trung thực trong "description" của mouse_click/type_text (không giấu diếm hành động thật, kể cả khi đó là hành động nhạy cảm như mua/thanh toán/xoá) để hệ thống bảo vệ người dùng hoạt động đúng.
+- VỊ TRÍ TẠO FILE/DỰ ÁN: thư mục làm việc hiện tại là "${process.cwd()}". Nếu người dùng NÓI RÕ vị trí/tên thư mục muốn tạo (vd: "tạo ở D:/projects/todo-app", "tạo trong thư mục moi-project", "tạo ở ngoài Desktop"...) -> PHẢI tạo đúng ở đó (dùng đường dẫn tương đối hoặc tuyệt đối cho khớp), TUYỆT ĐỐI không tự ý đổi sang thư mục hiện tại. Nếu người dùng yêu cầu 1 DỰ ÁN MỚI, TÁCH BIỆT (không phải sửa/thêm tính năng cho code đang có trong thư mục hiện tại) nhưng KHÔNG nói rõ vị trí -> mặc định tạo trong 1 thư mục con MỚI đặt tên theo dự án ngay trong thư mục hiện tại (vd: "./todo-app/..."), KHÔNG ném thẳng file vào ngay thư mục gốc đang chạy agent (đặc biệt nếu thư mục đó đã có sẵn code của 1 dự án khác như "backend" - tuyệt đối không trộn lẫn 2 dự án vào chung 1 chỗ). Nếu còn nghi ngờ nên tạo ở đâu, hỏi lại người dùng 1 câu ngắn gọn trước khi bắt đầu tạo hàng loạt file.
+- TUYỆT ĐỐI KHÔNG SỬA FILE CỦA 1 DỰ ÁN/TÍNH NĂNG KHÔNG LIÊN QUAN chỉ để thêm code cho việc đang làm: trước khi dùng str_replace_file/write_file lên 1 file ĐÃ CÓ SẴN NỘI DUNG, đọc qua nội dung hiện tại (đã có qua read_file) xem file đó thuộc về mảng nào (vd: "server.js" đang phục vụ web chat, có routes/chat.routes.js, socket.io chat...) - nếu yêu cầu hiện tại (vd: làm game caro) KHÔNG liên quan gì tới nội dung sẵn có của file đó, DỪNG LẠI, không nhét import/code không liên quan vào file đó. Thay vào đó tạo file/thư mục MỚI riêng cho việc đang làm (theo đúng quy tắc VỊ TRÍ ở trên). Nếu thực sự không chắc file nào đúng, hỏi lại người dùng thay vì đoán bừa rồi sửa nhầm file quan trọng của họ.
+- LẬP KẾ HOẠCH TRƯỚC KHI LÀM VIỆC LỚN: nếu yêu cầu cần từ 2 bước hoặc 2 file trở lên (tính năng mới, refactor, dự án nhiều file...), BẮT BUỘC gọi update_plan để viết checklist các bước TRƯỚC khi bắt đầu sửa code, rồi trình bày ngắn gọn kế hoạch đó cho người dùng xem qua trước khi thực hiện các bước tốn nhiều thao tác. Sau mỗi bước hoàn thành, gọi lại update_plan để đánh dấu [x] và cập nhật tiến độ — đừng để checklist bị lỗi thời. Kế hoạch này sẽ được nhắc lại ở đầu MỌI lượt chat sau đó (không phụ thuộc trí nhớ từ lịch sử hội thoại), nên PHẢI dựa vào nó để biết đang làm tới đâu, tránh lặp lại việc đã xong hoặc bỏ sót việc chưa làm — nếu thấy kế hoạch có sẵn từ đầu tin nhắn, đọc kỹ trước khi quyết định bước tiếp theo.
+- SAU KHI HOÀN THÀNH 1 VIỆC LỚN (nhiều file/nhiều bước): chủ động chạy lệnh kiểm tra phù hợp với dự án (node --check cho từng file JS đã sửa, npm test nếu có, npm run build/lint nếu có) để bắt lỗi vặt ẩn TRƯỚC KHI báo hoàn thành cho người dùng — không chỉ tự tin bằng mắt.
+- TỰ KIỂM TRA BẰNG MẮT TRƯỚC KHI BÁO XONG (không chỉ tin vào "chạy không lỗi cú pháp"): với bất kỳ sản phẩm nào CÓ GIAO DIỆN/CHẠY ĐƯỢC TRỰC QUAN (game, web app, GUI desktop, trang HTML...), sau khi code xong và qua kiểm tra cú pháp, BẮT BUỘC phải:
+  1. Chạy/mở nó lên thật (run_command để start server/script, hoặc open_app để mở file HTML/app bằng trình duyệt/ứng dụng mặc định).
+  2. take_screenshot để chụp lại màn hình đang chạy, rồi describe_image trên ảnh đó để "nhìn" xem giao diện thực tế ra sao.
+  3. Đối chiếu những gì nhìn thấy với ĐÚNG những gì người dùng yêu cầu ban đầu (và checklist trong update_plan nếu có): có đủ chức năng chưa, có phần tử nào bị thiếu/lệch layout/sai như mô tả không, có lỗi hiển thị rõ ràng (trắng trang, lỗi console, vỡ giao diện) không.
+  4. Nếu phát hiện thiếu/sai/lỗi -> tự quay lại sửa code rồi lặp lại bước 1-3 cho tới khi khớp yêu cầu, KHÔNG được báo "đã xong" chỉ vì code chạy không crash.
+  Chỉ báo cáo hoàn thành SAU KHI đã tự mắt xác nhận (qua describe_image) sản phẩm thực sự hoạt động và đúng yêu cầu, không suy đoán dựa trên việc "đọc code thấy có vẻ đúng".
+- TRƯỚC KHI báo "đã xong"/"hoàn thành" (đặc biệt khi đang auto): rà lại xem trong lượt làm việc có tool nào trả về lỗi bắt đầu bằng "[TỰ ĐỘNG TỪ CHỐI]" không. Nếu là loại "LỖI KỸ THUẬT" (do chính bạn viết sai) mà CHƯA quay lại sửa+thử lại thành công -> PHẢI xử lý xong trước, KHÔNG được báo hoàn thành trong khi vẫn còn file bị lỗi/thiếu. Nếu là loại "GIỚI HẠN AN TOÀN CỐ ĐỊNH" (không được thử lại) -> liệt kê rõ ràng, đầy đủ trong câu trả lời cuối cùng cho người dùng biết chính xác họ cần tự tay làm gì (lệnh gì, thao tác gì) để dự án thực sự hoàn chỉnh.
+- Nếu 1 tool trả về lỗi (bao gồm cả trường hợp người dùng từ chối xác nhận), đọc kỹ lỗi, giải thích ngắn gọn cho người dùng, và đề xuất bước tiếp theo thay vì lặp lại y hệt thao tác vừa bị từ chối.
+- 🚫 CẤM TUYỆT ĐỐI ÂM THẦM BỎ VIỆC ĐANG LÀM ĐỂ CHUYỂN SANG VIỆC KHÁC KHÔNG LIÊN QUAN KHI GẶP LỖI: nếu một thao tác (đọc file, chạy lệnh...) thất bại và KHÔNG có cách sửa rõ ràng ngay lập tức (vd: sai tên file do gõ nhầm/không chắc chắn tên đúng, đường dẫn không tồn tại, thiếu thông tin để tự đoán tiếp) — TUYỆT ĐỐI KHÔNG được tự ý "né" bằng cách âm thầm chuyển sang làm một việc/tạo một file khác không ai yêu cầu để lấp chỗ trống. Bắt buộc phải: (1) DỪNG LẠI, (2) BÁO RÕ cho người dùng đúng lỗi gặp phải là gì, (3) HỎI LẠI thông tin còn thiếu (vd: tên file chính xác), rồi mới tiếp tục — không được tự quyết định làm việc khác thay thế mà không nói trước. Đây là lỗi nghiêm trọng vì khiến người dùng tưởng việc ban đầu đã xong trong khi thực chất nó chưa hề được làm.
+- Trả lời bằng tiếng Việt, ngắn gọn, rõ ràng, có cấu trúc khi cần.
+`;
+
+const memoryContextAtStartup = buildMemoryContext();
+const SYSTEM_INSTRUCTION = memoryContextAtStartup
+  ? `${baseSystemInstruction}\n📌 BỘ NHỚ NHẸ (nạp từ phiên trước, có thể đã cũ, chỉ tham khảo):\n${memoryContextAtStartup}\n`
+  : baseSystemInstruction;
+
+// 📊 In số token đã dùng mỗi lượt gọi API, giống cách server.js log timing
+function logUsageMeta(response) {
+  const usage = response?.usageMetadata;
+  if (!usage) return;
+  console.log(c.gray(
+    `📊 Token: input=${usage.promptTokenCount || '?'}, output=${usage.candidatesTokenCount || '?'}, tổng=${usage.totalTokenCount || '?'}`
+  ));
+}
+
+// 🧠 Model: thử theo THỨ TỰ ƯU TIÊN mạnh -> yếu, nếu bị nghẽn/hết quota TRÊN TẤT CẢ key thì mới
+// tự động rớt xuống model kế tiếp (không phải lỗi, là fallback có chủ đích).
+// LƯU Ý: "gemini-3.1-pro-preview" mạnh nhất nhưng KHÔNG có free tier (quota=0 nếu chưa bật billing)
+// nên không đưa vào chuỗi này - đưa vào sẽ luôn fail ngay ở bước đầu, vô nghĩa.
+// Đổi được qua .env: GEMINI_MODEL="model1,model2,model3" (cách nhau bằng dấu phẩy, model đầu ưu tiên nhất).
+const MODEL_FALLBACK_CHAIN = (process.env.GEMINI_MODEL
+  ? process.env.GEMINI_MODEL.split(',').map(m => m.trim()).filter(Boolean)
+  : ['gemini-3-flash-preview']
+);
+let currentModelIdx = 0;
+const currentModelName = () => MODEL_FALLBACK_CHAIN[currentModelIdx];
+
+const CHAT_CONFIG = {
+  systemInstruction: SYSTEM_INSTRUCTION,
+  tools,
+  thinkingConfig: {
+    thinkingLevel: process.env.GEMINI_THINKING || 'HIGH' // max độ "suy nghĩ" để bù lại việc dùng model nhẹ
+  }
+};
+
+let ai = new GoogleGenAI({ apiKey: currentGeminiKey() });
+let chat = ai.chats.create({ model: currentModelName(), config: CHAT_CONFIG });
+
+// 🔁 Xoay sang key Gemini kế tiếp trong danh sách, dựng lại `ai`/`chat` với key mới (CÙNG model hiện tại)
+// nhưng GIỮ NGUYÊN lịch sử hội thoại hiện có (lấy qua chat.getHistory()), để không mất context.
+function rotateGeminiKey() {
+  if (GEMINI_KEYS.length <= 1) return false;
+  const preservedHistory = chat.getHistory();
+  geminiKeyIndex = (geminiKeyIndex + 1) % GEMINI_KEYS.length;
+  ai = new GoogleGenAI({ apiKey: currentGeminiKey() });
+  chat = ai.chats.create({ model: currentModelName(), config: CHAT_CONFIG, history: preservedHistory });
+  return true;
+}
+
+// 🧠➡️🧠 Rớt sang model dự phòng kế tiếp trong MODEL_FALLBACK_CHAIN (dùng khi model hiện tại
+// bó tay trên TẤT CẢ key — ví dụ model bị quota=0 ở free tier, hoặc quá tải kéo dài).
+// Giữ nguyên lịch sử hội thoại, quay geminiKeyIndex về key #1 để bắt đầu "sạch" với model mới.
+function switchToNextFallbackModel() {
+  if (currentModelIdx >= MODEL_FALLBACK_CHAIN.length - 1) return false; // đã là model cuối cùng trong danh sách
+  const preservedHistory = chat.getHistory();
+  currentModelIdx++;
+  geminiKeyIndex = 0;
+  ai = new GoogleGenAI({ apiKey: currentGeminiKey() });
+  chat = ai.chats.create({ model: currentModelName(), config: CHAT_CONFIG, history: preservedHistory });
+  return true;
+}
+
+// 📨 Gửi tin nhắn tới chat hiện tại. 2 lớp tự phục hồi:
+// 1) Trong 1 model: xoay qua TẤT CẢ key đang có, chờ ngắn giữa các lần thử.
+// 2) Nếu hết key mà model này vẫn lỗi (503 kéo dài, hoặc quota=0 cho model này ở free tier...):
+//    tự động rớt sang model dự phòng kế tiếp trong MODEL_FALLBACK_CHAIN, thử lại từ key #1.
+async function sendChatMessageWithRetry(messagePayload) {
+  while (true) {
+    const maxAttempts = Math.max(GEMINI_KEYS.length, 5);
+    const OVERLOAD_BACKOFF_MS = 1200;
+    let lastErr = null;
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        return await chat.sendMessage(messagePayload);
+      } catch (err) {
+        lastErr = err;
+        if (!isRetryableApiError(err)) throw err; // lỗi không thể retry -> ném luôn, không thử model khác
+
+        const overloaded = isOverloadedError(err);
+        const reason = overloaded ? 'Google đang quá tải (503)' : 'quota/rate-limit/key không hợp lệ';
+        console.log(c.yellow(`   ⚠️ [${currentModelName()}] Lỗi lần ${attempt}/${maxAttempts} (${reason}): ${err.message?.slice(0, 120) || err}`));
+
+        const isLastAttempt = attempt === maxAttempts;
+        if (isLastAttempt) break; // hết key cho model này -> rớt xuống model khác ở dưới
+
+        if (GEMINI_KEYS.length > 1) rotateGeminiKey();
+        console.log(c.yellow(`   🔁 Chuyển sang key Gemini #${geminiKeyIndex + 1}/${GEMINI_KEYS.length}, thử lại...`));
+        if (overloaded) await sleep(OVERLOAD_BACKOFF_MS);
+      }
+    }
+
+    // Đã thử hết key cho model hiện tại mà vẫn lỗi -> thử rớt sang model dự phòng kế tiếp
+    console.log(c.red(`   ❌ Model "${currentModelName()}" đã thử hết ${GEMINI_KEYS.length} key vẫn lỗi.`));
+    if (!switchToNextFallbackModel()) throw lastErr; // đã là model cuối cùng -> chịu thua, báo lỗi thật
+    console.log(c.magenta(`   🧠➡️🧠 Rớt sang model dự phòng: "${currentModelName()}", thử lại từ đầu...`));
+  }
+}
+
+// 🖼️ Gọi ai.models.generateContent (dùng cho describe_image), cùng logic 2 lớp (key -> model) như trên.
+// Lưu ý: params.model truyền vào sẽ bị GHI ĐÈ bằng model hiện tại trong chain, để nhất quán với chat chính.
+async function generateContentWithRetry(params) {
+  while (true) {
+    const maxAttempts = Math.max(GEMINI_KEYS.length, 5);
+    const OVERLOAD_BACKOFF_MS = 1200;
+    let lastErr = null;
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        return await ai.models.generateContent({ ...params, model: currentModelName() });
+      } catch (err) {
+        lastErr = err;
+        if (!isRetryableApiError(err)) throw err;
+
+        const overloaded = isOverloadedError(err);
+        const reason = overloaded ? 'Google đang quá tải (503)' : 'quota/rate-limit/key không hợp lệ';
+        console.log(c.yellow(`   ⚠️ [${currentModelName()}] Lỗi lần ${attempt}/${maxAttempts} khi xem ảnh (${reason})...`));
+
+        const isLastAttempt = attempt === maxAttempts;
+        if (isLastAttempt) break;
+
+        if (GEMINI_KEYS.length > 1) rotateGeminiKey();
+        console.log(c.yellow(`   🔁 Chuyển sang key Gemini #${geminiKeyIndex + 1}/${GEMINI_KEYS.length}, thử lại...`));
+        if (overloaded) await sleep(OVERLOAD_BACKOFF_MS);
+      }
+    }
+
+    console.log(c.red(`   ❌ Model "${currentModelName()}" đã thử hết ${GEMINI_KEYS.length} key vẫn lỗi khi xem ảnh.`));
+    if (!switchToNextFallbackModel()) throw lastErr;
+    console.log(c.magenta(`   🧠➡️🧠 Rớt sang model dự phòng: "${currentModelName()}", thử lại từ đầu...`));
+  }
+}
+
+// 🚀 Log khởi động, giống style server.js
+console.log(c.green(`🚀 Agent khởi động thành công`));
+console.log(c.gray(`   Model: ${currentModelName()} (thinking: ${CHAT_CONFIG.thinkingConfig.thinkingLevel})${MODEL_FALLBACK_CHAIN.length > 1 ? ` — dự phòng: ${MODEL_FALLBACK_CHAIN.slice(1).join(' → ')}` : ''}`));
+console.log(c.gray(`   Gemini key: ${GEMINI_KEYS.length} key khả dụng, đang dùng #${geminiKeyIndex + 1} (${currentGeminiKey().slice(0, 8)}...${currentGeminiKey().slice(-4)})`));
+console.log(c.gray(`   Tavily: ${TAVILY_KEYS.length > 0 ? `${TAVILY_KEYS.length} key khả dụng, đang dùng #${tavilyKeyIndex + 1} (${currentTavilyKey().slice(0, 8)}...${currentTavilyKey().slice(-4)})` : 'CHƯA cấu hình'}`));
+console.log(c.gray(`   Thư mục làm việc: ${process.cwd()}`));
+// 🧹 Dọn ảnh screenshot rác từ các phiên cũ (đặt tên kiểu cũ .screenshot_<timestamp>.png), tránh tích rác
+try {
+  for (const f of fs.readdirSync(process.cwd())) {
+    if (/^\.screenshot_\d+\.png$/.test(f)) fs.unlinkSync(path.join(process.cwd(), f));
+  }
+} catch { /* bỏ qua nếu không đọc được thư mục */ }
+console.log(c.gray(`   Bộ nhớ nhẹ: ${MEMORY_FILE} (${memory.facts.length} fact, ${Object.keys(memory.capabilities).length} năng lực đã biết)`));
+console.log(c.gray(`   Hồ sơ máy: phát hiện ${Object.values(memory.machineProfile?.tools || {}).filter(Boolean).length}/${MACHINE_PROFILE_TOOLS.length} công cụ dev (quét lúc ${memory.machineProfile?.scannedAt ? new Date(memory.machineProfile.scannedAt).toLocaleString('vi-VN') : 'chưa rõ'}, gõ /scan để quét lại)`));
+console.log(c.gray(`   Backup tự động khi ghi/sửa file: lưu trong ".agent_backups" NGAY CẠNH từng file được sửa (không phải 1 chỗ cố định)`));
+console.log(c.gray(`   File/thư mục CẤM TUYỆT ĐỐI (AGENT_PROTECTED_PATHS): ${PROTECTED_PATHS.length > 0 ? PROTECTED_PATHS.join(', ') : '(chưa khai báo - xem .env nếu muốn khoá cứng file quan trọng)'}`));
+
+async function runAgentTurn(userInput) {
+  let roundCount = 0;
+  stopRequested = false; // mỗi lượt mới -> reset cờ dừng, để Ctrl+C hoạt động lại từ đầu
+
+  // Nếu trong phiên này đã có fact mới được remember_fact ghi lại, nhắc lại ngắn gọn
+  // cho Gemini biết (vì system instruction chỉ nạp bộ nhớ 1 lần lúc khởi động).
+  let messageToSend = userInput;
+  const contextBlocks = [];
+  if (lockedProjectRoot) {
+    contextBlocks.push(`[⚠️ THƯ MỤC LÀM VIỆC ĐANG BỊ KHOÁ CỨNG bằng /workdir - ƯU TIÊN CAO NHẤT, GHI ĐÈ MỌI SUY ĐOÁN KHÁC]\nCHỈ được phép ghi/sửa/xoá file BÊN TRONG: "${lockedProjectRoot}" (và các thư mục con). Mọi file cần tạo/sửa PHẢI nằm trong phạm vi này - nếu không chắc đường dẫn, dùng đường dẫn TUYỆT ĐỐI bắt đầu bằng "${lockedProjectRoot}" để chắc chắn không nhầm ra ngoài. Thao tác ngoài phạm vi này sẽ bị HỆ THỐNG TỰ CHẶN (không phải AI tự quyết định), nên đừng thử.`);
+  }
+  if (memory.machineProfile && memory.machineProfile.tools) {
+    const installed = Object.entries(memory.machineProfile.tools).filter(([, v]) => v).map(([k, v]) => `${k} (${v})`).join('; ');
+    const missing = Object.entries(memory.machineProfile.tools).filter(([, v]) => !v).map(([k]) => k).join(', ');
+    contextBlocks.push(`[Hồ sơ máy - quét lúc ${memory.machineProfile.scannedAt}, gõ /scan để quét lại nếu máy đã đổi]\nĐã phát hiện có sẵn trong PATH: ${installed || '(chưa phát hiện gì trong danh sách quét)'}\nChưa phát hiện (KHÔNG chắc chắn là thật sự không có - có thể không nằm trong PATH hoặc ngoài danh sách quét cố định, nếu cần thì cứ tự run_command kiểm tra thêm): ${missing || '(không có)'}`);
+  }
+  if (currentPlan.trim()) {
+    contextBlocks.push(`[Kế hoạch dự án hiện tại - LUÔN bám sát, cập nhật bằng update_plan khi có tiến triển]\n${currentPlan.trim()}`);
+  }
+  if (sessionNewFacts.length > 0) {
+    const factsBlock = sessionNewFacts.map(f => `- ${f}`).join('\n');
+    contextBlocks.push(`[Ghi nhớ mới trong phiên làm việc này]\n${factsBlock}`);
+  }
+  if (contextBlocks.length > 0) {
+    messageToSend = `${contextBlocks.join('\n\n')}\n\n[Yêu cầu của người dùng]\n${userInput}`;
+  }
+
+  console.log(c.gray(`\n⏱️  Gửi request tới Gemini API...`));
+  let apiCallStart = Date.now();
+  let response = await sendChatMessageWithRetry({ message: messageToSend });
+  console.log(c.gray(`⏱️  Gemini phản hồi sau ${Date.now() - apiCallStart}ms`));
+  logUsageMeta(response);
+
+  // 🔁 Vòng lặp: AI có thể gọi nhiều tool liên tiếp trước khi trả lời cuối cùng
+  while (true) {
+    const calls = response.functionCalls;
+    if (!calls || calls.length === 0) break;
+
+    roundCount++;
+    console.log(c.gray(`\n🔁 Vòng gọi tool #${roundCount} (${calls.length} tool được yêu cầu)`));
+
+    const functionResponses = [];
+    for (const call of calls) {
+      if (stopRequested) {
+        // ⏸️ Người dùng bấm Ctrl+C -> không chạy tool thật nữa, báo cho Gemini biết để nó dừng
+        // và tóm tắt tình hình thay vì tiếp tục chuỗi hành động, giữ lịch sử chat hợp lệ.
+        console.log(c.yellow(`   ⏸️  Bỏ qua tool "${call.name}" vì đang tạm dừng theo yêu cầu.`));
+        functionResponses.push({
+          functionResponse: {
+            name: call.name,
+            response: { success: false, error: 'Người dùng vừa yêu cầu TẠM DỪNG (Ctrl+C). Dừng thực hiện các bước tiếp theo ngay, tóm tắt ngắn gọn đã làm tới đâu, và hỏi người dùng có muốn tiếp tục không.' },
+            id: call.id
+          }
+        });
+        continue;
+      }
+      const toolStart = Date.now();
+      const waitMsBeforeThisTool = totalConfirmWaitMs; // mốc trước khi chạy tool này
+      const output = await executeFunctionCall(call);
+      const elapsedTotal = Date.now() - toolStart;
+      const waitMsDuringThisTool = totalConfirmWaitMs - waitMsBeforeThisTool; // phần thời gian CHỜ y/n xảy ra trong lúc chạy tool này
+      const realProcessingMs = elapsedTotal - waitMsDuringThisTool; // 🐛FIX#3: thời gian xử lý THẬT, đã trừ phần chờ người dùng
+      if (waitMsDuringThisTool > 0) {
+        console.log(c.gray(`   ⏱️  Tool "${call.name}" xử lý thật hết ${realProcessingMs}ms (đã trừ ${waitMsDuringThisTool}ms chờ bạn xác nhận y/n, tổng cộng ${elapsedTotal}ms)`));
+      } else {
+        console.log(c.gray(`   ⏱️  Tool "${call.name}" xử lý xong sau ${realProcessingMs}ms`));
+      }
+      functionResponses.push({
+        functionResponse: { name: call.name, response: output, id: call.id }
+      });
+    }
+
+    console.log(c.gray(`\n⏱️  Gửi kết quả tool ngược lại Gemini, chờ phản hồi tiếp...`));
+    apiCallStart = Date.now();
+    response = await sendChatMessageWithRetry({ message: functionResponses });
+    console.log(c.gray(`⏱️  Gemini phản hồi sau ${Date.now() - apiCallStart}ms`));
+    logUsageMeta(response);
+
+    if (stopRequested) break; // đã báo Gemini dừng ở trên -> thoát vòng lặp sau khi lấy phản hồi tóm tắt
+  }
+
+  stopRequested = false; // đã xử lý xong lượt dừng (nếu có) -> reset để lượt sau bình thường trở lại
+  const text = response.text || '';
+  console.log(c.gray(`\n📊 Tổng cộng: ${roundCount} vòng gọi tool trong lượt này`));
+  console.log(c.green(`\n🤖 AI: `) + text + '\n');
+  return text;
+}
+
+// 🏗️ CHẾ ĐỘ DỰ ÁN TỰ ĐỘNG 100%: thay vì chỉ làm 1 lượt rồi dừng lại chờ bạn gõ "tiếp tục" thủ công,
+// agent tự lặp lại nhiều "vòng lớn" liên tiếp KHÔNG CẦN người dùng gõ gì thêm, cho tới khi tự báo
+// hoàn thành (in đúng PROJECT_DONE_MARKER) hoặc chạm giới hạn MAX_PROJECT_ROUNDS (tránh chạy vô hạn tốn token).
+// Lưu ý: lệnh/thao tác RỦI RO CAO vẫn bị auto-từ-chối như bình thường (xem autoDenyAndContinue), không bị lách qua.
+const PROJECT_DONE_MARKER = '===PROJECT_DONE===';
+const MAX_PROJECT_ROUNDS = Number(process.env.PROJECT_MAX_ROUNDS) || 25;
+
+// 📁 Đảm bảo /project luôn có thư mục làm việc RÕ RÀNG trước khi vào vòng lặp tự động.
+// - Nếu ĐÃ khoá sẵn (do /workdir gõ trước đó, hoặc 1 lần /project trước đó trong phiên này) -> dùng luôn, KHÔNG hỏi lại gì cả.
+// - Nếu CHƯA khoá -> hỏi ĐÚNG 1 CÂU DUY NHẤT ngay bây giờ (trước khi runProjectMode bắt đầu), rồi tự khoá cứng luôn.
+// Thư mục chưa tồn tại thì TỰ TẠO LUÔN chứ KHÔNG hỏi thêm y/n (khác với /workdir gõ tay) - vì mục đích là chạy
+// không người canh (đi ngủ/đi vắng), nên sau câu hỏi đường dẫn này TUYỆT ĐỐI không được phát sinh câu hỏi nào nữa.
+async function ensureProjectWorkdir() {
+  if (lockedProjectRoot) {
+    console.log(c.gray(`📌 Đang dùng thư mục đã khoá từ trước: "${lockedProjectRoot}" (gõ /workdir <đường dẫn khác> TRƯỚC KHI gõ /project nếu muốn đổi).\n`));
+    return;
+  }
+
+  const cwd = process.cwd();
+  const answer = await ask(c.yellow(`📁 Dự án này bạn muốn làm tại đường dẫn nào? (ghi rõ để agent không hiểu lầm, hoặc Enter để dùng thư mục hiện tại "${cwd}"): `));
+  const resolved = path.resolve(answer.trim() || cwd);
+
+  if (!fs.existsSync(resolved)) {
+    fs.mkdirSync(resolved, { recursive: true });
+    console.log(c.gray(`   (Thư mục chưa tồn tại nên đã tự tạo mới luôn, không hỏi lại.)`));
+  }
+
+  lockedProjectRoot = resolved;
+  console.log(c.green(`📌 Đã KHOÁ CỨNG thư mục làm việc cho /project: "${lockedProjectRoot}"`));
+  console.log(c.gray('   Từ giờ tới lúc xong, agent CHỈ ghi/sửa/xoá file TRONG thư mục này và KHÔNG hỏi thêm bất cứ gì nữa, kể cả khi bạn đi ngủ/đi vắng. Gõ "/workdir off" sau khi xong nếu muốn mở khoá.\n'));
+}
+
+async function runProjectMode(goal) {
+  console.log(c.cyan(c.bold('\n🏗️  CHẾ ĐỘ DỰ ÁN TỰ ĐỘNG — bắt đầu, agent sẽ tự làm liên tục tới khi xong, không cần bạn gõ "tiếp tục"...')));
+  console.log(c.gray(`   (Giới hạn tối đa ${MAX_PROJECT_ROUNDS} vòng lớn để tránh chạy vô hạn tốn token. Ctrl+C để dừng bất cứ lúc nào.)\n`));
+
+  const wasAuto = autoMode;
+  autoMode = true; // bắt buộc bật auto trong chế độ này, nếu không sẽ bị treo chờ xác nhận từng file/lệnh
+  inProjectMode = true;
+  projectStopRequested = false;
+
+  const projectSystemNote =
+`[CHẾ ĐỘ TỰ ĐỘNG TOÀN PHẦN - ĐANG BẬT]
+Đây có thể là 1 dự án code, HOẶC 1 MỤC TIÊU BẤT KỲ khác (cài đặt phần mềm, setup công cụ, tải file, cấu hình hệ thống...) - áp dụng đúng phần liên quan bên dưới, bỏ qua phần không liên quan.
+Từ giờ bạn làm việc HOÀN TOÀN TỰ ĐỘNG, KHÔNG dừng lại hỏi người dùng câu hỏi làm rõ nào — nếu có điều mơ hồ, tự chọn phương án hợp lý nhất và dùng remember_fact ghi lại giả định quan trọng. Người dùng ra MỤC TIÊU CUỐI CÙNG, không quan tâm bạn đi đường nào để tới đó — bạn tự chọn cách, tự đổi cách nếu cách đầu không được.
+Quy trình BẮT BUỘC, LÀM LIÊN TỤC KHÔNG NGHỈ GIỮA CHỪNG:
+1. Nếu chưa có, dùng update_plan lập checklist đầy đủ TOÀN BỘ các bước cần làm cho MỤC TIÊU bên dưới.
+2. Làm lần lượt từng việc trong checklist: tạo/sửa file / chạy lệnh cài đặt / mở app / tải xuống..., cập nhật update_plan đánh dấu [x] sau mỗi việc xong.
+3. KIÊN TRÌ KHI THẤT BẠI - đây là điểm QUAN TRỌNG NHẤT: nếu 1 cách không được (lệnh lỗi, app không mở, tải không xong, cài đặt fail...), ĐỌC KỸ lỗi thật để hiểu nguyên nhân, rồi TỰ THỬ CÁCH KHÁC (đổi lệnh, đổi nguồn tải, đổi cách cài, cài dependency còn thiếu trước, thử phương án B/C...) - KHÔNG dừng lại báo lỗi cho người dùng rồi đứng im, KHÔNG hỏi người dùng "giờ làm sao". Chỉ coi là bế tắc thật sự sau khi đã thử ít nhất vài cách khác nhau và tất cả đều thất bại rõ ràng.
+4. Với code có giao diện/chạy trực quan (game, web, GUI...) HOẶC sau khi mở app/cài đặt phần mềm: PHẢI tự mở lên (open_app/run_command) + take_screenshot + describe_image để tự "nhìn" xem đã đúng/đủ/mở thành công theo mục tiêu chưa - không suy đoán, phải thấy tận mắt qua ảnh chụp thật.
+5. TRƯỚC KHI báo hoàn thành: dùng delete_file dọn sạch mọi file rác/thử-sai/trùng lặp do chính bạn tạo ra trong quá trình làm (nếu có) - không để lại rác. Sau đó KHÔNG dừng lại giữa chừng để báo "đã xong 1 phần, bạn xem thử" — chỉ dừng khi checklist ở update_plan đã [x] hết TẤT CẢ, đã tự kiểm tra kỹ (bước 3+4), đã dọn rác xong, và thực sự không còn việc gì để làm, hoặc thực sự bế tắc sau khi đã thử nhiều cách (xem bước 3).
+6. CHỈ khi chắc chắn xong 100% thật sự (hoặc bế tắc thật sự sau khi đã thử hết cách), kết thúc câu trả lời bằng đúng 1 dòng riêng biệt: ${PROJECT_DONE_MARKER}
+Nếu CHƯA thực sự xong VÀ CHƯA bế tắc, TUYỆT ĐỐI không được viết dòng đó — cứ tiếp tục gọi tool làm tiếp, hệ thống sẽ tự nhắc bạn làm tiếp ở vòng sau mà không cần người dùng gõ gì thêm.`;
+
+  let nextInput = `${projectSystemNote}\n\n[YÊU CẦU DỰ ÁN CỦA NGƯỜI DÙNG]\n${goal}`;
+  let round = 0;
+  let done = false;
+
+  try {
+    while (round < MAX_PROJECT_ROUNDS && !done) {
+      round++;
+      console.log(c.cyan(c.bold(`\n🏗️  [Dự án] Vòng lớn #${round}/${MAX_PROJECT_ROUNDS}`)));
+      try {
+        const text = await runAgentTurn(nextInput);
+        if (text.includes(PROJECT_DONE_MARKER)) {
+          done = true;
+          break;
+        }
+        if (projectStopRequested) {
+          console.log(c.yellow('\n⏸️  Đã nhận Ctrl+C -> dừng hẳn vòng lặp /project, không tự động tiếp tục round kế.'));
+          break;
+        }
+        nextInput = 'Tiếp tục làm đúng theo quy trình ở trên (bám checklist update_plan -> nếu gặp lỗi thì đọc kỹ và tự thử cách khác, không bỏ cuộc -> tự kiểm tra bằng run_command/screenshot -> tự sửa nếu có) cho tới khi TOÀN BỘ checklist đã xong thật sự (hoặc thực sự bế tắc sau khi đã thử nhiều cách) rồi mới báo hoàn thành.';
+      } catch (err) {
+        console.log(c.red(`⚠️ Lỗi trong vòng dự án: ${err.message}`));
+        nextInput = `Vòng trước bị lỗi hệ thống (không phải lỗi code của bạn): "${err.message}". Hãy tiếp tục công việc còn dang dở.`;
+      }
+    }
+
+    if (done) {
+      console.log(c.green(c.bold(`\n🏁 Agent báo đã HOÀN THÀNH dự án sau ${round} vòng lớn.`)));
+    } else {
+      console.log(c.yellow(`\n⏹️  Đã dừng chế độ dự án tự động (chạm giới hạn ${MAX_PROJECT_ROUNDS} vòng, hoặc bị Ctrl+C, hoặc agent chưa tự báo xong).`));
+      console.log(c.gray(`   Gõ "/plan" xem checklist còn gì, hoặc gõ tiếp yêu cầu thủ công / "/project ${goal}" lần nữa để làm nốt.`));
+    }
+  } finally {
+    autoMode = wasAuto;
+    inProjectMode = false;
+    printSummary();
+  }
+}
+
+console.log(c.cyan(c.bold('🤖 Gemini Coding Agent')));
+console.log(c.gray('Gõ yêu cầu bằng tiếng Việt tự nhiên. Gõ "exit" để thoát.'));
+console.log(c.gray('Gõ "/auto on" để bật chế độ tự động TOÀN PHẦN (không hỏi lại bất cứ gì — việc an toàn thì tự làm, việc rủi ro cao thì TỰ TỪ CHỐI rồi làm tiếp việc khác, không treo màn hình chờ). Gõ "/auto off" để tắt (mặc định TẮT).'));
+console.log(c.gray('Gõ "/project <mục tiêu>" để agent TỰ LÀM LIÊN TỤC 100% tới khi xong (code, cài đặt phần mềm, setup công cụ...) — gặp lỗi tự thử cách khác, không hỏi lại, không dừng lại chờ bạn gõ "tiếp tục".'));
+console.log(c.gray('   Nếu chưa /workdir từ trước, /project sẽ hỏi ĐÚNG 1 CÂU về đường dẫn làm việc rồi tự khoá cứng - sau đó chạy 100% không hỏi gì thêm, an toàn kể cả khi bạn đi ngủ/đi vắng.'));
+console.log(c.gray('Bấm Ctrl+C 1 LẦN bất cứ lúc nào (kể cả đang /auto on hoặc /project) để agent dừng sau bước đang làm, tóm tắt, rồi trả lại cho bạn gõ lệnh mới. Ctrl+C lần 2 = thoát hẳn.'));
+console.log(c.gray('Gõ "/workdir <đường dẫn>" để KHOÁ CỨNG thư mục làm việc - agent CHỈ được ghi/sửa/xoá file TRONG đúng thư mục đó, ngoài phạm vi tự động bị chặn (không phụ thuộc AI hiểu đúng path hay không). Gõ "/workdir off" để mở khoá.'));
+console.log(c.gray('Gõ "/undo" để khôi phục ngay lần ghi/sửa file gần nhất nếu AI làm hỏng. Gõ "/summary" để xem tóm tắt phiên. Gõ "/plan" để xem kế hoạch dự án hiện tại. Gõ "/scan" để quét lại hồ sơ máy (dùng khi vừa cài thêm công cụ mới).'));
+console.log(c.gray('Ví dụ /project: "/project tải và cài VMware Workstation, mở lên kiểm tra chạy được thì thôi"\n'));
+console.log(c.gray('Ví dụ: "đọc file src/server.js rồi thêm log khi có lỗi 500"\n'));
+
+function promptLoop() {
+  const modeLabel = autoMode ? c.green('[AUTO]') : c.gray('[thủ công]');
+  rl.question(`${modeLabel} ${c.cyan(c.bold('Bạn: '))}`, async (input) => {
+    const trimmed = input.trim();
+
+    if (trimmed.toLowerCase() === 'exit') {
+      rl.close();
+      return;
+    }
+
+    if (trimmed.toLowerCase() === '/auto on') {
+      autoMode = true;
+      console.log(c.green('🤖 Đã BẬT chế độ auto — agent sẽ tự "yes" nếu qua được kiểm tra an toàn (syntax check + chặn lệnh nguy hiểm). Lệnh rủi ro cao vẫn sẽ hỏi bạn.\n'));
+      return promptLoop();
+    }
+
+    if (trimmed.toLowerCase() === '/auto off') {
+      autoMode = false;
+      console.log(c.yellow('🖐️ Đã TẮT chế độ auto — quay lại hỏi xác nhận mọi thao tác ghi file/chạy lệnh.\n'));
+      return promptLoop();
+    }
+
+    if (trimmed.toLowerCase() === '/summary') {
+      printSummary();
+      return promptLoop();
+    }
+
+    if (trimmed.toLowerCase() === '/scan') {
+      memory.machineProfile = scanMachineProfile();
+      saveMemory();
+      const installed = Object.entries(memory.machineProfile.tools).filter(([, v]) => v);
+      console.log(c.gray(`Đã cập nhật hồ sơ máy (${installed.length}/${MACHINE_PROFILE_TOOLS.length} công cụ), áp dụng ngay từ tin nhắn tiếp theo.\n`));
+      return promptLoop();
+    }
+
+    if (trimmed.toLowerCase().startsWith('/workdir')) {
+      const arg = trimmed.slice('/workdir'.length).trim();
+      if (!arg) {
+        console.log(c.yellow('Dùng: /workdir <đường dẫn thư mục> để KHOÁ CỨNG, agent chỉ được ghi/sửa/xoá TRONG đúng thư mục đó (và thư mục con).'));
+        console.log(c.gray(`Trạng thái hiện tại: ${lockedProjectRoot ? `ĐANG KHOÁ tại "${lockedProjectRoot}"` : 'chưa khoá (agent có thể ghi bất kỳ đâu bạn yêu cầu)'}`));
+        console.log(c.gray('Gõ "/workdir off" để mở khoá.\n'));
+      } else if (arg.toLowerCase() === 'off') {
+        lockedProjectRoot = null;
+        console.log(c.green('🔓 Đã mở khoá thư mục làm việc — agent có thể ghi/sửa file ở bất kỳ đâu bạn yêu cầu trở lại.\n'));
+      } else {
+        const resolved = path.resolve(arg);
+        if (!fs.existsSync(resolved)) {
+          console.log(c.yellow(`⚠️ Thư mục "${resolved}" chưa tồn tại. Tạo mới luôn không?`));
+          const confirm = await ask(c.yellow('Tạo thư mục này rồi khoá? (y/n): '));
+          if (confirm.trim().toLowerCase() !== 'y') {
+            console.log(c.gray('Đã huỷ, chưa khoá gì.\n'));
+            return promptLoop();
+          }
+          fs.mkdirSync(resolved, { recursive: true });
+        }
+        lockedProjectRoot = resolved;
+        console.log(c.green(`📌 Đã KHOÁ CỨNG thư mục làm việc: "${lockedProjectRoot}"`));
+        console.log(c.gray('   Mọi ghi/sửa/xoá file NGOÀI thư mục này sẽ tự động bị chặn, không phụ thuộc AI có "hiểu đúng" hay không.\n'));
+      }
+      return promptLoop();
+    }
+
+    if (trimmed.toLowerCase().startsWith('/project')) {
+      const goal = trimmed.slice('/project'.length).trim();
+      if (!goal) {
+        console.log(c.yellow('Dùng: /project <mô tả dự án bạn muốn agent tự làm liên tục 100%>'));
+        console.log(c.gray('Ví dụ: /project Tạo game caro chạy trên web, có giao diện, tự kiểm tra thắng thua, có README\n'));
+      } else {
+        try {
+          await ensureProjectWorkdir(); // hỏi ĐÚNG 1 câu về đường dẫn (nếu chưa khoá sẵn) rồi tự khoá cứng — sau đây KHÔNG hỏi gì thêm nữa
+          await runProjectMode(goal);
+        } catch (err) {
+          console.log(c.red(`⚠️ Lỗi: ${err.message}`));
+          autoMode = false;
+          inProjectMode = false;
+        }
+      }
+      return promptLoop();
+    }
+
+    if (trimmed.toLowerCase() === '/undo') {
+      if (!lastBackup) {
+        console.log(c.yellow('🤷 Chưa có backup nào trong phiên này để khôi phục.\n'));
+      } else {
+        try {
+          fs.copyFileSync(lastBackup.backupPath, lastBackup.targetPath);
+          console.log(c.green(`↩️  Đã khôi phục "${lastBackup.targetPath}" về trạng thái trước lần ghi/sửa gần nhất.\n`));
+          logAction({ label: `/undo: khôi phục ${lastBackup.targetPath}`, status: 'ok' });
+          lastBackup = null; // chỉ undo được 1 lần gần nhất, tránh undo lặp về bản backup đã dùng
+        } catch (err) {
+          console.log(c.red(`⚠️ Không khôi phục được: ${err.message}\n`));
+        }
+      }
+      return promptLoop();
+    }
+
+    if (trimmed.toLowerCase() === '/plan') {
+      if (!currentPlan.trim()) {
+        console.log(c.yellow(`🤷 Chưa có kế hoạch nào được lập (file ${PLAN_FILE} chưa tồn tại/rỗng).\n`));
+      } else {
+        console.log(c.cyan(`\n📋 Kế hoạch dự án hiện tại (${PLAN_FILE}):\n`));
+        console.log(currentPlan);
+        console.log('');
+      }
+      return promptLoop();
+    }
+
+    if (!trimmed) return promptLoop();
+
+    try {
+      await runAgentTurn(trimmed);
+    } catch (err) {
+      console.log(c.red(`⚠️ Lỗi: ${err.message}`));
+    }
+
+    promptLoop();
+  });
+}
+
+promptLoop();

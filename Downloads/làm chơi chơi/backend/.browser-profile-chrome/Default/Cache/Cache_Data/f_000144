@@ -1,0 +1,791 @@
+import { createHotContext as __vite__createHotContext } from "/@vite/client";import.meta.hot = __vite__createHotContext("/src/components/TableDesigner.jsx");import __vite__cjsImport0_react_jsxDevRuntime from "/node_modules/.vite/deps/react_jsx-dev-runtime.js?v=40bcafeb"; const jsxDEV = __vite__cjsImport0_react_jsxDevRuntime["jsxDEV"];
+import * as RefreshRuntime from "/@react-refresh";
+const inWebWorker = typeof WorkerGlobalScope !== "undefined" && self instanceof WorkerGlobalScope;
+let prevRefreshReg;
+let prevRefreshSig;
+if (import.meta.hot && !inWebWorker) {
+  if (!window.$RefreshReg$) {
+    throw new Error(
+      "@vitejs/plugin-react can't detect preamble. Something is wrong."
+    );
+  }
+  prevRefreshReg = window.$RefreshReg$;
+  prevRefreshSig = window.$RefreshSig$;
+  window.$RefreshReg$ = RefreshRuntime.getRefreshReg("C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/TableDesigner.jsx");
+  window.$RefreshSig$ = RefreshRuntime.createSignatureFunctionForTransform;
+}
+var _s = $RefreshSig$();
+import __vite__cjsImport3_react from "/node_modules/.vite/deps/react.js?v=40bcafeb"; const React = __vite__cjsImport3_react.__esModule ? __vite__cjsImport3_react.default : __vite__cjsImport3_react; const useState = __vite__cjsImport3_react["useState"]; const useEffect = __vite__cjsImport3_react["useEffect"]; const useMemo = __vite__cjsImport3_react["useMemo"]; const useCallback = __vite__cjsImport3_react["useCallback"];
+import { apiService } from "/src/services/api.js";
+import {
+  Layout,
+  Plus,
+  Trash2,
+  Edit,
+  Check,
+  X,
+  Coffee,
+  Users,
+  Building,
+  Sparkles,
+  AlertCircle,
+  RefreshCw,
+  Sliders
+} from "/node_modules/.vite/deps/lucide-react.js?v=40bcafeb";
+export default function TableDesigner() {
+  _s();
+  const [tables, setTables] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [notification, setNotification] = useState("");
+  const [editingId, setEditingId] = useState(null);
+  const [tableName, setTableName] = useState("");
+  const [tableArea, setTableArea] = useState("Tầng 1 (Trong nhà)");
+  const [customAreaInput, setCustomAreaInput] = useState("");
+  const [tableSeats, setTableSeats] = useState(4);
+  const [activeAreaFilter, setActiveAreaFilter] = useState("ALL");
+  const loadTables = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await apiService.getTables();
+      if (res.success) {
+        setTables(res.data || []);
+      }
+    } catch (err) {
+      console.error("Lỗi tải danh sách bàn:", err);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+  useEffect(() => {
+    loadTables();
+  }, [loadTables]);
+  const areasList = useMemo(() => {
+    const defaultAreas = [
+      "Tầng 1 (Trong nhà)",
+      "Tầng 1 (Cửa kính)",
+      "Tầng 2 (Máy lạnh)",
+      "Tầng 2 (Ban công)",
+      "Sân Vườn (Ngoài trời)",
+      "Khu VIP Hộp"
+    ];
+    const existingAreas = tables.map((t) => t.area).filter(Boolean);
+    return Array.from(/* @__PURE__ */ new Set([...defaultAreas, ...existingAreas]));
+  }, [tables]);
+  const filteredTables = useMemo(() => {
+    if (activeAreaFilter === "ALL") return tables;
+    return tables.filter((t) => t.area === activeAreaFilter);
+  }, [tables, activeAreaFilter]);
+  const stats = useMemo(() => {
+    const totalTables = tables.length;
+    const totalSeats = tables.reduce((sum, t) => sum + (t.seats || 0), 0);
+    const uniqueAreas = new Set(tables.map((t) => t.area)).size;
+    return { totalTables, totalSeats, uniqueAreas };
+  }, [tables]);
+  const resetForm = () => {
+    setEditingId(null);
+    setTableName("");
+    setTableArea("Tầng 1 (Trong nhà)");
+    setCustomAreaInput("");
+    setTableSeats(4);
+  };
+  const handleEditTable = (table) => {
+    setEditingId(table.id);
+    setTableName(table.name);
+    setTableArea(table.area);
+    setTableSeats(table.seats || 4);
+    setCustomAreaInput("");
+  };
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!tableName.trim()) {
+      alert("Vui lòng nhập tên bàn!");
+      return;
+    }
+    const finalArea = tableArea === "CUSTOM" ? customAreaInput.trim() : tableArea;
+    if (!finalArea) {
+      alert("Vui lòng chọn hoặc nhập tên khu vực!");
+      return;
+    }
+    setSaving(true);
+    try {
+      if (editingId) {
+        const res = await apiService.updateTable(editingId, {
+          name: tableName.trim(),
+          area: finalArea,
+          seats: Number(tableSeats)
+        });
+        if (res.success) {
+          setNotification("Đã cập nhật bàn thành công!");
+          resetForm();
+          loadTables();
+        }
+      } else {
+        const res = await apiService.createTable({
+          name: tableName.trim(),
+          area: finalArea,
+          seats: Number(tableSeats)
+        });
+        if (res.success) {
+          setNotification("Đã thêm bàn mới vào sơ đồ thành công!");
+          resetForm();
+          loadTables();
+        }
+      }
+      setTimeout(() => setNotification(""), 3e3);
+    } catch (err) {
+      alert(err.message || "Lỗi khi lưu thông tin bàn!");
+    } finally {
+      setSaving(false);
+    }
+  };
+  const handleDeleteTable = async (id, name) => {
+    if (window.confirm(`Bạn có chắc chắn muốn xóa "${name}" khỏi sơ đồ không?`)) {
+      try {
+        const res = await apiService.deleteTable(id);
+        if (res.success) {
+          setNotification(`Đã xóa "${name}" thành công!`);
+          setTimeout(() => setNotification(""), 3e3);
+          loadTables();
+        }
+      } catch (err) {
+        alert(err.message || "Lỗi khi xóa bàn!");
+      }
+    }
+  };
+  return /* @__PURE__ */ jsxDEV("div", { className: "space-y-6 max-w-7xl mx-auto pb-12", children: [
+    /* @__PURE__ */ jsxDEV("div", { className: "bg-gradient-to-r from-coffee-900 via-coffee-800 to-amber-900 text-white p-6 rounded-2xl shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-4", children: [
+      /* @__PURE__ */ jsxDEV("div", { children: [
+        /* @__PURE__ */ jsxDEV("div", { className: "flex items-center gap-2 text-amber-300 font-bold text-xs uppercase tracking-wider mb-1", children: [
+          /* @__PURE__ */ jsxDEV(Sparkles, { className: "w-4 h-4" }, void 0, false, {
+            fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/TableDesigner.jsx",
+            lineNumber: 182,
+            columnNumber: 13
+          }, this),
+          " Bố Thắng Studio Layout"
+        ] }, void 0, true, {
+          fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/TableDesigner.jsx",
+          lineNumber: 181,
+          columnNumber: 11
+        }, this),
+        /* @__PURE__ */ jsxDEV("h2", { className: "text-2xl font-black flex items-center gap-2", children: "🎨 Thiết Kế & Quản Lý Sơ Đồ Bàn Quán Cà Phê" }, void 0, false, {
+          fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/TableDesigner.jsx",
+          lineNumber: 184,
+          columnNumber: 11
+        }, this),
+        /* @__PURE__ */ jsxDEV("p", { className: "text-xs text-coffee-200 mt-1 max-w-2xl", children: "Tùy chỉnh linh hoạt sơ đồ bàn, số lượng ghế và chia khu vực riêng biệt cho từng không gian quán (Tầng 1, Tầng 2, Ban công, Sân vườn, Phòng VIP...)." }, void 0, false, {
+          fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/TableDesigner.jsx",
+          lineNumber: 187,
+          columnNumber: 11
+        }, this)
+      ] }, void 0, true, {
+        fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/TableDesigner.jsx",
+        lineNumber: 180,
+        columnNumber: 9
+      }, this),
+      /* @__PURE__ */ jsxDEV("div", { className: "flex items-center gap-3 bg-white/10 backdrop-blur-md p-3 rounded-xl border border-white/10", children: [
+        /* @__PURE__ */ jsxDEV("div", { className: "text-center px-3 border-r border-white/10", children: [
+          /* @__PURE__ */ jsxDEV("div", { className: "text-xs text-coffee-200", children: "Tổng số bàn" }, void 0, false, {
+            fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/TableDesigner.jsx",
+            lineNumber: 195,
+            columnNumber: 13
+          }, this),
+          /* @__PURE__ */ jsxDEV("div", { className: "text-lg font-black text-amber-300", children: [
+            stats.totalTables,
+            " bàn"
+          ] }, void 0, true, {
+            fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/TableDesigner.jsx",
+            lineNumber: 196,
+            columnNumber: 13
+          }, this)
+        ] }, void 0, true, {
+          fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/TableDesigner.jsx",
+          lineNumber: 194,
+          columnNumber: 11
+        }, this),
+        /* @__PURE__ */ jsxDEV("div", { className: "text-center px-3 border-r border-white/10", children: [
+          /* @__PURE__ */ jsxDEV("div", { className: "text-xs text-coffee-200", children: "Sức chứa" }, void 0, false, {
+            fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/TableDesigner.jsx",
+            lineNumber: 199,
+            columnNumber: 13
+          }, this),
+          /* @__PURE__ */ jsxDEV("div", { className: "text-lg font-black text-emerald-300", children: [
+            stats.totalSeats,
+            " ghế"
+          ] }, void 0, true, {
+            fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/TableDesigner.jsx",
+            lineNumber: 200,
+            columnNumber: 13
+          }, this)
+        ] }, void 0, true, {
+          fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/TableDesigner.jsx",
+          lineNumber: 198,
+          columnNumber: 11
+        }, this),
+        /* @__PURE__ */ jsxDEV("div", { className: "text-center px-3", children: [
+          /* @__PURE__ */ jsxDEV("div", { className: "text-xs text-coffee-200", children: "Khu vực" }, void 0, false, {
+            fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/TableDesigner.jsx",
+            lineNumber: 203,
+            columnNumber: 13
+          }, this),
+          /* @__PURE__ */ jsxDEV("div", { className: "text-lg font-black text-sky-300", children: [
+            stats.uniqueAreas,
+            " khu"
+          ] }, void 0, true, {
+            fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/TableDesigner.jsx",
+            lineNumber: 204,
+            columnNumber: 13
+          }, this)
+        ] }, void 0, true, {
+          fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/TableDesigner.jsx",
+          lineNumber: 202,
+          columnNumber: 11
+        }, this)
+      ] }, void 0, true, {
+        fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/TableDesigner.jsx",
+        lineNumber: 193,
+        columnNumber: 9
+      }, this)
+    ] }, void 0, true, {
+      fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/TableDesigner.jsx",
+      lineNumber: 179,
+      columnNumber: 7
+    }, this),
+    notification && /* @__PURE__ */ jsxDEV("div", { className: "p-4 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl text-xs font-bold flex items-center gap-2 shadow-2xs", children: [
+      /* @__PURE__ */ jsxDEV(Check, { className: "w-4 h-4 text-emerald-600 flex-shrink-0" }, void 0, false, {
+        fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/TableDesigner.jsx",
+        lineNumber: 211,
+        columnNumber: 11
+      }, this),
+      /* @__PURE__ */ jsxDEV("span", { children: notification }, void 0, false, {
+        fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/TableDesigner.jsx",
+        lineNumber: 212,
+        columnNumber: 11
+      }, this)
+    ] }, void 0, true, {
+      fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/TableDesigner.jsx",
+      lineNumber: 210,
+      columnNumber: 7
+    }, this),
+    /* @__PURE__ */ jsxDEV("div", { className: "grid grid-cols-1 lg:grid-cols-12 gap-6", children: [
+      /* @__PURE__ */ jsxDEV("div", { className: "lg:col-span-4 bg-white p-5 rounded-2xl border border-gray-200 shadow-2xs h-fit space-y-4", children: [
+        /* @__PURE__ */ jsxDEV("div", { className: "flex items-center justify-between border-b border-gray-100 pb-3", children: [
+          /* @__PURE__ */ jsxDEV("h3", { className: "font-bold text-gray-800 text-sm flex items-center gap-2", children: [
+            /* @__PURE__ */ jsxDEV(Sliders, { className: "w-4 h-4 text-coffee-600" }, void 0, false, {
+              fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/TableDesigner.jsx",
+              lineNumber: 222,
+              columnNumber: 15
+            }, this),
+            editingId ? "Chỉnh Sửa Thông Tin Bàn" : "Thêm Bàn Mới Cho Quán"
+          ] }, void 0, true, {
+            fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/TableDesigner.jsx",
+            lineNumber: 221,
+            columnNumber: 13
+          }, this),
+          editingId && /* @__PURE__ */ jsxDEV(
+            "button",
+            {
+              onClick: resetForm,
+              className: "text-xs text-gray-400 hover:text-gray-600 flex items-center gap-1",
+              children: [
+                /* @__PURE__ */ jsxDEV(X, { className: "w-3.5 h-3.5" }, void 0, false, {
+                  fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/TableDesigner.jsx",
+                  lineNumber: 230,
+                  columnNumber: 17
+                }, this),
+                " Hủy sửa"
+              ]
+            },
+            void 0,
+            true,
+            {
+              fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/TableDesigner.jsx",
+              lineNumber: 226,
+              columnNumber: 13
+            },
+            this
+          )
+        ] }, void 0, true, {
+          fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/TableDesigner.jsx",
+          lineNumber: 220,
+          columnNumber: 11
+        }, this),
+        /* @__PURE__ */ jsxDEV("form", { onSubmit: handleSubmit, className: "space-y-4 text-xs", children: [
+          /* @__PURE__ */ jsxDEV("div", { children: [
+            /* @__PURE__ */ jsxDEV("label", { className: "font-bold text-gray-700 block mb-1", children: "Tên Bàn / Số Bàn *" }, void 0, false, {
+              fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/TableDesigner.jsx",
+              lineNumber: 238,
+              columnNumber: 15
+            }, this),
+            /* @__PURE__ */ jsxDEV(
+              "input",
+              {
+                type: "text",
+                value: tableName,
+                onChange: (e) => setTableName(e.target.value),
+                placeholder: "Vd: Bàn 01, Bàn Ban Công 02, Bàn VIP 1...",
+                className: "w-full px-3 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-xs outline-none focus:bg-white focus:border-coffee-600 transition",
+                required: true
+              },
+              void 0,
+              false,
+              {
+                fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/TableDesigner.jsx",
+                lineNumber: 239,
+                columnNumber: 15
+              },
+              this
+            )
+          ] }, void 0, true, {
+            fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/TableDesigner.jsx",
+            lineNumber: 237,
+            columnNumber: 13
+          }, this),
+          /* @__PURE__ */ jsxDEV("div", { children: [
+            /* @__PURE__ */ jsxDEV("label", { className: "font-bold text-gray-700 block mb-1", children: "Khu Vực Không Gian *" }, void 0, false, {
+              fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/TableDesigner.jsx",
+              lineNumber: 251,
+              columnNumber: 15
+            }, this),
+            /* @__PURE__ */ jsxDEV(
+              "select",
+              {
+                value: tableArea,
+                onChange: (e) => setTableArea(e.target.value),
+                className: "w-full px-3 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-xs outline-none focus:bg-white focus:border-coffee-600 font-medium transition",
+                children: [
+                  areasList.map(
+                    (a) => /* @__PURE__ */ jsxDEV("option", { value: a, children: a }, a, false, {
+                      fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/TableDesigner.jsx",
+                      lineNumber: 258,
+                      columnNumber: 17
+                    }, this)
+                  ),
+                  /* @__PURE__ */ jsxDEV("option", { value: "CUSTOM", children: "+ Tạo khu vực mới..." }, void 0, false, {
+                    fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/TableDesigner.jsx",
+                    lineNumber: 262,
+                    columnNumber: 17
+                  }, this)
+                ]
+              },
+              void 0,
+              true,
+              {
+                fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/TableDesigner.jsx",
+                lineNumber: 252,
+                columnNumber: 15
+              },
+              this
+            ),
+            tableArea === "CUSTOM" && /* @__PURE__ */ jsxDEV(
+              "input",
+              {
+                type: "text",
+                value: customAreaInput,
+                onChange: (e) => setCustomAreaInput(e.target.value),
+                placeholder: "Nhập tên khu vực mới (vd: Tầng Trệt, Sân Thượng...)",
+                className: "w-full mt-2 px-3 py-2 bg-amber-50 border border-amber-300 text-amber-900 rounded-xl text-xs outline-none focus:bg-white focus:border-coffee-600 transition",
+                required: true
+              },
+              void 0,
+              false,
+              {
+                fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/TableDesigner.jsx",
+                lineNumber: 267,
+                columnNumber: 15
+              },
+              this
+            )
+          ] }, void 0, true, {
+            fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/TableDesigner.jsx",
+            lineNumber: 250,
+            columnNumber: 13
+          }, this),
+          /* @__PURE__ */ jsxDEV("div", { children: [
+            /* @__PURE__ */ jsxDEV("label", { className: "font-bold text-gray-700 block mb-1", children: "Sức Chứa (Số Ghế)" }, void 0, false, {
+              fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/TableDesigner.jsx",
+              lineNumber: 280,
+              columnNumber: 15
+            }, this),
+            /* @__PURE__ */ jsxDEV("div", { className: "grid grid-cols-4 gap-2", children: [2, 4, 6, 8].map(
+              (s) => /* @__PURE__ */ jsxDEV(
+                "button",
+                {
+                  type: "button",
+                  onClick: () => setTableSeats(s),
+                  className: `py-2 rounded-xl font-bold border transition ${tableSeats === s ? "bg-coffee-800 text-amber-200 border-coffee-800 shadow-2xs" : "bg-white text-gray-600 border-gray-200 hover:bg-gray-50"}`,
+                  children: [
+                    s,
+                    " Ghế"
+                  ]
+                },
+                s,
+                true,
+                {
+                  fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/TableDesigner.jsx",
+                  lineNumber: 283,
+                  columnNumber: 17
+                },
+                this
+              )
+            ) }, void 0, false, {
+              fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/TableDesigner.jsx",
+              lineNumber: 281,
+              columnNumber: 15
+            }, this),
+            /* @__PURE__ */ jsxDEV(
+              "input",
+              {
+                type: "number",
+                min: "1",
+                max: "30",
+                value: tableSeats,
+                onChange: (e) => setTableSeats(Number(e.target.value)),
+                className: "w-full mt-2 px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-xs outline-none focus:bg-white focus:border-coffee-600 transition"
+              },
+              void 0,
+              false,
+              {
+                fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/TableDesigner.jsx",
+                lineNumber: 297,
+                columnNumber: 15
+              },
+              this
+            )
+          ] }, void 0, true, {
+            fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/TableDesigner.jsx",
+            lineNumber: 279,
+            columnNumber: 13
+          }, this),
+          /* @__PURE__ */ jsxDEV("div", { className: "pt-2", children: /* @__PURE__ */ jsxDEV(
+            "button",
+            {
+              type: "submit",
+              disabled: saving,
+              className: "w-full py-3 bg-coffee-800 hover:bg-coffee-900 active:bg-coffee-950 text-white font-bold text-xs rounded-xl shadow-xs transition active:scale-[0.98] disabled:opacity-50 flex items-center justify-center gap-2 cursor-pointer",
+              children: [
+                editingId ? /* @__PURE__ */ jsxDEV(Check, { className: "w-4 h-4" }, void 0, false, {
+                  fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/TableDesigner.jsx",
+                  lineNumber: 314,
+                  columnNumber: 30
+                }, this) : /* @__PURE__ */ jsxDEV(Plus, { className: "w-4 h-4" }, void 0, false, {
+                  fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/TableDesigner.jsx",
+                  lineNumber: 314,
+                  columnNumber: 62
+                }, this),
+                /* @__PURE__ */ jsxDEV("span", { children: saving ? "Đang lưu..." : editingId ? "Cập Nhật Thông Tin Bàn" : "Thêm Bàn Vào Sơ Đồ" }, void 0, false, {
+                  fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/TableDesigner.jsx",
+                  lineNumber: 315,
+                  columnNumber: 17
+                }, this)
+              ]
+            },
+            void 0,
+            true,
+            {
+              fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/TableDesigner.jsx",
+              lineNumber: 309,
+              columnNumber: 15
+            },
+            this
+          ) }, void 0, false, {
+            fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/TableDesigner.jsx",
+            lineNumber: 308,
+            columnNumber: 13
+          }, this)
+        ] }, void 0, true, {
+          fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/TableDesigner.jsx",
+          lineNumber: 235,
+          columnNumber: 11
+        }, this)
+      ] }, void 0, true, {
+        fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/TableDesigner.jsx",
+        lineNumber: 219,
+        columnNumber: 9
+      }, this),
+      /* @__PURE__ */ jsxDEV("div", { className: "lg:col-span-8 bg-white p-5 rounded-2xl border border-gray-200 shadow-2xs space-y-4", children: [
+        /* @__PURE__ */ jsxDEV("div", { className: "flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-gray-100 pb-3", children: [
+          /* @__PURE__ */ jsxDEV("div", { children: [
+            /* @__PURE__ */ jsxDEV("h3", { className: "font-bold text-gray-800 text-sm flex items-center gap-2", children: [
+              /* @__PURE__ */ jsxDEV(Building, { className: "w-4 h-4 text-coffee-600" }, void 0, false, {
+                fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/TableDesigner.jsx",
+                lineNumber: 326,
+                columnNumber: 17
+              }, this),
+              "Sơ Đồ Không Gian Bàn Hiện Tại"
+            ] }, void 0, true, {
+              fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/TableDesigner.jsx",
+              lineNumber: 325,
+              columnNumber: 15
+            }, this),
+            /* @__PURE__ */ jsxDEV("p", { className: "text-[11px] text-gray-400 mt-0.5", children: "Nhấp vào nút Sửa hoặc Xóa trên từng thẻ bàn để quản lý nhanh." }, void 0, false, {
+              fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/TableDesigner.jsx",
+              lineNumber: 329,
+              columnNumber: 15
+            }, this)
+          ] }, void 0, true, {
+            fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/TableDesigner.jsx",
+            lineNumber: 324,
+            columnNumber: 13
+          }, this),
+          /* @__PURE__ */ jsxDEV(
+            "button",
+            {
+              onClick: loadTables,
+              className: "p-2 bg-gray-50 hover:bg-gray-100 rounded-xl text-gray-600 transition flex items-center gap-1 text-xs font-semibold",
+              title: "Tải lại sơ đồ",
+              children: [
+                /* @__PURE__ */ jsxDEV(RefreshCw, { className: `w-3.5 h-3.5 ${loading ? "animate-spin" : ""}` }, void 0, false, {
+                  fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/TableDesigner.jsx",
+                  lineNumber: 340,
+                  columnNumber: 15
+                }, this),
+                /* @__PURE__ */ jsxDEV("span", { children: "Cập nhật" }, void 0, false, {
+                  fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/TableDesigner.jsx",
+                  lineNumber: 341,
+                  columnNumber: 15
+                }, this)
+              ]
+            },
+            void 0,
+            true,
+            {
+              fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/TableDesigner.jsx",
+              lineNumber: 335,
+              columnNumber: 13
+            },
+            this
+          )
+        ] }, void 0, true, {
+          fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/TableDesigner.jsx",
+          lineNumber: 323,
+          columnNumber: 11
+        }, this),
+        /* @__PURE__ */ jsxDEV("div", { className: "flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar", children: [
+          /* @__PURE__ */ jsxDEV(
+            "button",
+            {
+              onClick: () => setActiveAreaFilter("ALL"),
+              className: `px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition active:scale-95 ${activeAreaFilter === "ALL" ? "bg-coffee-800 text-amber-200 shadow-2xs" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`,
+              children: [
+                "🌐 Tất cả (",
+                tables.length,
+                ")"
+              ]
+            },
+            void 0,
+            true,
+            {
+              fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/TableDesigner.jsx",
+              lineNumber: 347,
+              columnNumber: 13
+            },
+            this
+          ),
+          areasList.map((area) => {
+            const count = tables.filter((t) => t.area === area).length;
+            if (count === 0 && activeAreaFilter !== area) return null;
+            return /* @__PURE__ */ jsxDEV(
+              "button",
+              {
+                onClick: () => setActiveAreaFilter(area),
+                className: `px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition active:scale-95 ${activeAreaFilter === area ? "bg-coffee-800 text-amber-200 shadow-2xs" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`,
+                children: [
+                  "📍 ",
+                  area,
+                  " (",
+                  count,
+                  ")"
+                ]
+              },
+              area,
+              true,
+              {
+                fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/TableDesigner.jsx",
+                lineNumber: 361,
+                columnNumber: 17
+              },
+              this
+            );
+          })
+        ] }, void 0, true, {
+          fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/TableDesigner.jsx",
+          lineNumber: 346,
+          columnNumber: 11
+        }, this),
+        loading && tables.length === 0 ? /* @__PURE__ */ jsxDEV("div", { className: "p-12 text-center text-gray-400 text-xs", children: "Đang tải sơ đồ bàn..." }, void 0, false, {
+          fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/TableDesigner.jsx",
+          lineNumber: 378,
+          columnNumber: 11
+        }, this) : filteredTables.length === 0 ? /* @__PURE__ */ jsxDEV("div", { className: "p-12 text-center text-gray-400 text-xs flex flex-col items-center justify-center", children: [
+          /* @__PURE__ */ jsxDEV(Coffee, { className: "w-10 h-10 text-gray-200 mb-2" }, void 0, false, {
+            fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/TableDesigner.jsx",
+            lineNumber: 381,
+            columnNumber: 15
+          }, this),
+          /* @__PURE__ */ jsxDEV("p", { children: "Chưa có bàn nào ở khu vực này." }, void 0, false, {
+            fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/TableDesigner.jsx",
+            lineNumber: 382,
+            columnNumber: 15
+          }, this),
+          /* @__PURE__ */ jsxDEV("p", { className: "text-[11px] text-gray-300 mt-1", children: "Dùng form bên trái để thêm bàn mới." }, void 0, false, {
+            fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/TableDesigner.jsx",
+            lineNumber: 383,
+            columnNumber: 15
+          }, this)
+        ] }, void 0, true, {
+          fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/TableDesigner.jsx",
+          lineNumber: 380,
+          columnNumber: 11
+        }, this) : /* @__PURE__ */ jsxDEV("div", { className: "grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3.5", children: filteredTables.map(
+          (table) => /* @__PURE__ */ jsxDEV(
+            "div",
+            {
+              className: `p-3.5 rounded-2xl border transition duration-200 flex flex-col justify-between h-36 relative group shadow-2xs ${editingId === table.id ? "bg-amber-50 border-amber-400 ring-2 ring-amber-400/30" : "bg-white border-gray-200 hover:border-coffee-500 hover:shadow-md"}`,
+              children: [
+                /* @__PURE__ */ jsxDEV("div", { className: "flex items-center justify-between", children: [
+                  /* @__PURE__ */ jsxDEV("span", { className: "text-[10px] font-bold px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 border border-gray-200", children: [
+                    "ID #",
+                    table.id
+                  ] }, void 0, true, {
+                    fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/TableDesigner.jsx",
+                    lineNumber: 397,
+                    columnNumber: 21
+                  }, this),
+                  /* @__PURE__ */ jsxDEV("span", { className: "text-[11px] font-bold text-coffee-800 flex items-center gap-1", children: [
+                    /* @__PURE__ */ jsxDEV(Users, { className: "w-3 h-3 text-coffee-600" }, void 0, false, {
+                      fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/TableDesigner.jsx",
+                      lineNumber: 401,
+                      columnNumber: 23
+                    }, this),
+                    " ",
+                    table.seats,
+                    " ghế"
+                  ] }, void 0, true, {
+                    fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/TableDesigner.jsx",
+                    lineNumber: 400,
+                    columnNumber: 21
+                  }, this)
+                ] }, void 0, true, {
+                  fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/TableDesigner.jsx",
+                  lineNumber: 396,
+                  columnNumber: 19
+                }, this),
+                /* @__PURE__ */ jsxDEV("div", { className: "my-1 text-center", children: [
+                  /* @__PURE__ */ jsxDEV("h4", { className: "font-extrabold text-gray-800 text-sm", children: table.name }, void 0, false, {
+                    fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/TableDesigner.jsx",
+                    lineNumber: 406,
+                    columnNumber: 21
+                  }, this),
+                  /* @__PURE__ */ jsxDEV("p", { className: "text-[10px] text-gray-400 line-clamp-1 mt-0.5", children: table.area }, void 0, false, {
+                    fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/TableDesigner.jsx",
+                    lineNumber: 407,
+                    columnNumber: 21
+                  }, this)
+                ] }, void 0, true, {
+                  fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/TableDesigner.jsx",
+                  lineNumber: 405,
+                  columnNumber: 19
+                }, this),
+                /* @__PURE__ */ jsxDEV("div", { className: "flex items-center gap-1 pt-2 border-t border-gray-100", children: [
+                  /* @__PURE__ */ jsxDEV(
+                    "button",
+                    {
+                      onClick: () => handleEditTable(table),
+                      className: "flex-1 py-1 bg-gray-50 hover:bg-amber-100 hover:text-amber-900 text-gray-600 font-bold text-[11px] rounded-lg transition flex items-center justify-center gap-1",
+                      children: [
+                        /* @__PURE__ */ jsxDEV(Edit, { className: "w-3 h-3" }, void 0, false, {
+                          fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/TableDesigner.jsx",
+                          lineNumber: 416,
+                          columnNumber: 23
+                        }, this),
+                        " Sửa"
+                      ]
+                    },
+                    void 0,
+                    true,
+                    {
+                      fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/TableDesigner.jsx",
+                      lineNumber: 412,
+                      columnNumber: 21
+                    },
+                    this
+                  ),
+                  /* @__PURE__ */ jsxDEV(
+                    "button",
+                    {
+                      onClick: () => handleDeleteTable(table.id, table.name),
+                      className: "p-1 bg-gray-50 hover:bg-red-100 text-gray-400 hover:text-red-600 rounded-lg transition",
+                      title: "Xóa bàn này",
+                      children: /* @__PURE__ */ jsxDEV(Trash2, { className: "w-3.5 h-3.5" }, void 0, false, {
+                        fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/TableDesigner.jsx",
+                        lineNumber: 423,
+                        columnNumber: 23
+                      }, this)
+                    },
+                    void 0,
+                    false,
+                    {
+                      fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/TableDesigner.jsx",
+                      lineNumber: 418,
+                      columnNumber: 21
+                    },
+                    this
+                  )
+                ] }, void 0, true, {
+                  fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/TableDesigner.jsx",
+                  lineNumber: 411,
+                  columnNumber: 19
+                }, this)
+              ]
+            },
+            table.id,
+            true,
+            {
+              fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/TableDesigner.jsx",
+              lineNumber: 388,
+              columnNumber: 13
+            },
+            this
+          )
+        ) }, void 0, false, {
+          fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/TableDesigner.jsx",
+          lineNumber: 386,
+          columnNumber: 11
+        }, this)
+      ] }, void 0, true, {
+        fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/TableDesigner.jsx",
+        lineNumber: 322,
+        columnNumber: 9
+      }, this)
+    ] }, void 0, true, {
+      fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/TableDesigner.jsx",
+      lineNumber: 217,
+      columnNumber: 7
+    }, this)
+  ] }, void 0, true, {
+    fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/TableDesigner.jsx",
+    lineNumber: 177,
+    columnNumber: 5
+  }, this);
+}
+_s(TableDesigner, "MbFZ3vqm5cv6Sme4CwIdJtrtgpM=");
+_c = TableDesigner;
+var _c;
+$RefreshReg$(_c, "TableDesigner");
+if (import.meta.hot && !inWebWorker) {
+  window.$RefreshReg$ = prevRefreshReg;
+  window.$RefreshSig$ = prevRefreshSig;
+}
+if (import.meta.hot && !inWebWorker) {
+  RefreshRuntime.__hmr_import(import.meta.url).then((currentExports) => {
+    RefreshRuntime.registerExportsForReactRefresh("C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/TableDesigner.jsx", currentExports);
+    import.meta.hot.accept((nextExports) => {
+      if (!nextExports) return;
+      const invalidateMessage = RefreshRuntime.validateRefreshBoundaryAndEnqueueUpdate("C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/TableDesigner.jsx", currentExports, nextExports);
+      if (invalidateMessage) import.meta.hot.invalidate(invalidateMessage);
+    });
+  });
+}
+
+//# sourceMappingURL=data:application/json;base64,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O0FBQUEsc0JBQ3BDLFdBQVU7QUFBQSxzQkFFVjtBQUFBLCtDQUFDLFFBQUssV0FBVSxhQUFoQjtBQUFBO0FBQUE7QUFBQTtBQUFBLCtCQUF5QjtBQUFBLHdCQUFHO0FBQUE7QUFBQTtBQUFBLG9CQUo5QjtBQUFBO0FBQUE7QUFBQTtBQUFBO0FBQUE7QUFBQTtBQUFBO0FBQUEsa0JBS0E7QUFBQSxrQkFDQTtBQUFBLG9CQUFDO0FBQUE7QUFBQSxzQkFDQyxTQUFTLE1BQU1jLGtCQUFrQmQsTUFBTUMsSUFBSUQsTUFBTUUsSUFBSTtBQUFBLHNCQUNyRCxXQUFVO0FBQUEsc0JBQ1YsT0FBTTtBQUFBLHNCQUVOLGlDQUFDLFVBQU8sV0FBVSxpQkFBbEI7QUFBQTtBQUFBO0FBQUE7QUFBQSw2QkFBK0I7QUFBQTtBQUFBLG9CQUxqQztBQUFBO0FBQUE7QUFBQTtBQUFBO0FBQUE7QUFBQTtBQUFBO0FBQUEsa0JBTUE7QUFBQSxxQkFiRjtBQUFBO0FBQUE7QUFBQTtBQUFBLHVCQWNBO0FBQUE7QUFBQTtBQUFBLFlBcENLRixNQUFNQztBQUFBQSxZQURiO0FBQUE7QUFBQTtBQUFBO0FBQUE7QUFBQTtBQUFBO0FBQUEsVUFzQ0E7QUFBQSxRQUNELEtBekNIO0FBQUE7QUFBQTtBQUFBO0FBQUEsZUEwQ0E7QUFBQSxXQTFHSjtBQUFBO0FBQUE7QUFBQTtBQUFBLGFBNEdBO0FBQUEsU0FyTkY7QUFBQTtBQUFBO0FBQUE7QUFBQSxXQXNOQTtBQUFBLE9BOVBGO0FBQUE7QUFBQTtBQUFBO0FBQUEsU0ErUEE7QUFFSjtBQUFDckQsR0E1WXVCRCxlQUFhO0FBQUEsS0FBYkE7QUFBYSxJQUFBNEU7QUFBQSxhQUFBQSxJQUFBIiwibmFtZXMiOlsiUmVhY3QiLCJ1c2VTdGF0ZSIsInVzZUVmZmVjdCIsInVzZU1lbW8iLCJ1c2VDYWxsYmFjayIsImFwaVNlcnZpY2UiLCJMYXlvdXQiLCJQbHVzIiwiVHJhc2gyIiwiRWRpdCIsIkNoZWNrIiwiWCIsIkNvZmZlZSIsIlVzZXJzIiwiQnVpbGRpbmciLCJTcGFya2xlcyIsIkFsZXJ0Q2lyY2xlIiwiUmVmcmVzaEN3IiwiU2xpZGVycyIsIlRhYmxlRGVzaWduZXIiLCJfcyIsInRhYmxlcyIsInNldFRhYmxlcyIsImxvYWRpbmciLCJzZXRMb2FkaW5nIiwic2F2aW5nIiwic2V0U2F2aW5nIiwibm90aWZpY2F0aW9uIiwic2V0Tm90aWZpY2F0aW9uIiwiZWRpdGluZ0lkIiwic2V0RWRpdGluZ0lkIiwidGFibGVOYW1lIiwic2V0VGFibGVOYW1lIiwidGFibGVBcmVhIiwic2V0VGFibGVBcmVhIiwiY3VzdG9tQXJlYUlucHV0Iiwic2V0Q3VzdG9tQXJlYUlucHV0IiwidGFibGVTZWF0cyIsInNldFRhYmxlU2VhdHMiLCJhY3RpdmVBcmVhRmlsdGVyIiwic2V0QWN0aXZlQXJlYUZpbHRlciIsImxvYWRUYWJsZXMiLCJyZXMiLCJnZXRUYWJsZXMiLCJzdWNjZXNzIiwiZGF0YSIsImVyciIsImNvbnNvbGUiLCJlcnJvciIsImFyZWFzTGlzdCIsImRlZmF1bHRBcmVhcyIsImV4aXN0aW5nQXJlYXMiLCJtYXAiLCJ0IiwiYXJlYSIsImZpbHRlciIsIkJvb2xlYW4iLCJBcnJheSIsImZyb20iLCJTZXQiLCJmaWx0ZXJlZFRhYmxlcyIsInN0YXRzIiwidG90YWxUYWJsZXMiLCJsZW5ndGgiLCJ0b3RhbFNlYXRzIiwicmVkdWNlIiwic3VtIiwic2VhdHMiLCJ1bmlxdWVBcmVhcyIsInNpemUiLCJyZXNldEZvcm0iLCJoYW5kbGVFZGl0VGFibGUiLCJ0YWJsZSIsImlkIiwibmFtZSIsImhhbmRsZVN1Ym1pdCIsImUiLCJwcmV2ZW50RGVmYXVsdCIsInRyaW0iLCJhbGVydCIsImZpbmFsQXJlYSIsInVwZGF0ZVRhYmxlIiwiTnVtYmVyIiwiY3JlYXRlVGFibGUiLCJzZXRUaW1lb3V0IiwibWVzc2FnZSIsImhhbmRsZURlbGV0ZVRhYmxlIiwid2luZG93IiwiY29uZmlybSIsImRlbGV0ZVRhYmxlIiwidGFyZ2V0IiwidmFsdWUiLCJhIiwicyIsImNvdW50IiwiX2MiXSwiaWdub3JlTGlzdCI6W10sInNvdXJjZXMiOlsiVGFibGVEZXNpZ25lci5qc3giXSwic291cmNlc0NvbnRlbnQiOlsiaW1wb3J0IFJlYWN0LCB7IHVzZVN0YXRlLCB1c2VFZmZlY3QsIHVzZU1lbW8sIHVzZUNhbGxiYWNrIH0gZnJvbSAncmVhY3QnO1xuaW1wb3J0IHsgYXBpU2VydmljZSB9IGZyb20gJy4uL3NlcnZpY2VzL2FwaSc7XG5pbXBvcnQge1xuICBMYXlvdXQsXG4gIFBsdXMsXG4gIFRyYXNoMixcbiAgRWRpdCxcbiAgQ2hlY2ssXG4gIFgsXG4gIENvZmZlZSxcbiAgVXNlcnMsXG4gIEJ1aWxkaW5nLFxuICBTcGFya2xlcyxcbiAgQWxlcnRDaXJjbGUsXG4gIFJlZnJlc2hDdyxcbiAgU2xpZGVyc1xufSBmcm9tICdsdWNpZGUtcmVhY3QnO1xuXG5leHBvcnQgZGVmYXVsdCBmdW5jdGlvbiBUYWJsZURlc2lnbmVyKCkge1xuICBjb25zdCBbdGFibGVzLCBzZXRUYWJsZXNdID0gdXNlU3RhdGUoW10pO1xuICBjb25zdCBbbG9hZGluZywgc2V0TG9hZGluZ10gPSB1c2VTdGF0ZSh0cnVlKTtcbiAgY29uc3QgW3NhdmluZywgc2V0U2F2aW5nXSA9IHVzZVN0YXRlKGZhbHNlKTtcbiAgY29uc3QgW25vdGlmaWNhdGlvbiwgc2V0Tm90aWZpY2F0aW9uXSA9IHVzZVN0YXRlKCcnKTtcblxuICAvLyBGb3JtIFN0YXRlXG4gIGNvbnN0IFtlZGl0aW5nSWQsIHNldEVkaXRpbmdJZF0gPSB1c2VTdGF0ZShudWxsKTtcbiAgY29uc3QgW3RhYmxlTmFtZSwgc2V0VGFibGVOYW1lXSA9IHVzZVN0YXRlKCcnKTtcbiAgY29uc3QgW3RhYmxlQXJlYSwgc2V0VGFibGVBcmVhXSA9IHVzZVN0YXRlKCdU4bqnbmcgMSAoVHJvbmcgbmjDoCknKTtcbiAgY29uc3QgW2N1c3RvbUFyZWFJbnB1dCwgc2V0Q3VzdG9tQXJlYUlucHV0XSA9IHVzZVN0YXRlKCcnKTtcbiAgY29uc3QgW3RhYmxlU2VhdHMsIHNldFRhYmxlU2VhdHNdID0gdXNlU3RhdGUoNCk7XG5cbiAgLy8gRmlsdGVyXG4gIGNvbnN0IFthY3RpdmVBcmVhRmlsdGVyLCBzZXRBY3RpdmVBcmVhRmlsdGVyXSA9IHVzZVN0YXRlKCdBTEwnKTtcblxuICBjb25zdCBsb2FkVGFibGVzID0gdXNlQ2FsbGJhY2soYXN5bmMgKCkgPT4ge1xuICAgIHNldExvYWRpbmcodHJ1ZSk7XG4gICAgdHJ5IHtcbiAgICAgIGNvbnN0IHJlcyA9IGF3YWl0IGFwaVNlcnZpY2UuZ2V0VGFibGVzKCk7XG4gICAgICBpZiAocmVzLnN1Y2Nlc3MpIHtcbiAgICAgICAgc2V0VGFibGVzKHJlcy5kYXRhIHx8IFtdKTtcbiAgICAgIH1cbiAgICB9IGNhdGNoIChlcnIpIHtcbiAgICAgIGNvbnNvbGUuZXJyb3IoJ0zhu5dpIHThuqNpIGRhbmggc8OhY2ggYsOgbjonLCBlcnIpO1xuICAgIH0gZmluYWxseSB7XG4gICAgICBzZXRMb2FkaW5nKGZhbHNlKTtcbiAgICB9XG4gIH0sIFtdKTtcblxuICB1c2VFZmZlY3QoKCkgPT4ge1xuICAgIGxvYWRUYWJsZXMoKTtcbiAgfSwgW2xvYWRUYWJsZXNdKTtcblxuICBjb25zdCBhcmVhc0xpc3QgPSB1c2VNZW1vKCgpID0+IHtcbiAgICBjb25zdCBkZWZhdWx0QXJlYXMgPSBbXG4gICAgICAnVOG6p25nIDEgKFRyb25nIG5ow6ApJyxcbiAgICAgICdU4bqnbmcgMSAoQ+G7rWEga8OtbmgpJyxcbiAgICAgICdU4bqnbmcgMiAoTcOheSBs4bqhbmgpJyxcbiAgICAgICdU4bqnbmcgMiAoQmFuIGPDtG5nKScsXG4gICAgICAnU8OibiBWxrDhu51uIChOZ2/DoGkgdHLhu51pKScsXG4gICAgICAnS2h1IFZJUCBI4buZcCdcbiAgICBdO1xuICAgIGNvbnN0IGV4aXN0aW5nQXJlYXMgPSB0YWJsZXMubWFwKCh0KSA9PiB0LmFyZWEpLmZpbHRlcihCb29sZWFuKTtcbiAgICByZXR1cm4gQXJyYXkuZnJvbShuZXcgU2V0KFsuLi5kZWZhdWx0QXJlYXMsIC4uLmV4aXN0aW5nQXJlYXNdKSk7XG4gIH0sIFt0YWJsZXNdKTtcblxuICBjb25zdCBmaWx0ZXJlZFRhYmxlcyA9IHVzZU1lbW8oKCkgPT4ge1xuICAgIGlmIChhY3RpdmVBcmVhRmlsdGVyID09PSAnQUxMJykgcmV0dXJuIHRhYmxlcztcbiAgICByZXR1cm4gdGFibGVzLmZpbHRlcigodCkgPT4gdC5hcmVhID09PSBhY3RpdmVBcmVhRmlsdGVyKTtcbiAgfSwgW3RhYmxlcywgYWN0aXZlQXJlYUZpbHRlcl0pO1xuXG4gIGNvbnN0IHN0YXRzID0gdXNlTWVtbygoKSA9PiB7XG4gICAgY29uc3QgdG90YWxUYWJsZXMgPSB0YWJsZXMubGVuZ3RoO1xuICAgIGNvbnN0IHRvdGFsU2VhdHMgPSB0YWJsZXMucmVkdWNlKChzdW0sIHQpID0+IHN1bSArICh0LnNlYXRzIHx8IDApLCAwKTtcbiAgICBjb25zdCB1bmlxdWVBcmVhcyA9IG5ldyBTZXQodGFibGVzLm1hcCgodCkgPT4gdC5hcmVhKSkuc2l6ZTtcbiAgICByZXR1cm4geyB0b3RhbFRhYmxlcywgdG90YWxTZWF0cywgdW5pcXVlQXJlYXMgfTtcbiAgfSwgW3RhYmxlc10pO1xuXG4gIGNvbnN0IHJlc2V0Rm9ybSA9ICgpID0+IHtcbiAgICBzZXRFZGl0aW5nSWQobnVsbCk7XG4gICAgc2V0VGFibGVOYW1lKCcnKTtcbiAgICBzZXRUYWJsZUFyZWEoJ1ThuqduZyAxIChUcm9uZyBuaMOgKScpO1xuICAgIHNldEN1c3RvbUFyZWFJbnB1dCgnJyk7XG4gICAgc2V0VGFibGVTZWF0cyg0KTtcbiAgfTtcblxuICBjb25zdCBoYW5kbGVFZGl0VGFibGUgPSAodGFibGUpID0+IHtcbiAgICBzZXRFZGl0aW5nSWQodGFibGUuaWQpO1xuICAgIHNldFRhYmxlTmFtZSh0YWJsZS5uYW1lKTtcbiAgICBzZXRUYWJsZUFyZWEodGFibGUuYXJlYSk7XG4gICAgc2V0VGFibGVTZWF0cyh0YWJsZS5zZWF0cyB8fCA0KTtcbiAgICBzZXRDdXN0b21BcmVhSW5wdXQoJycpO1xuICB9O1xuXG4gIGNvbnN0IGhhbmRsZVN1Ym1pdCA9IGFzeW5jIChlKSA9PiB7XG4gICAgZS5wcmV2ZW50RGVmYXVsdCgpO1xuICAgIGlmICghdGFibGVOYW1lLnRyaW0oKSkge1xuICAgICAgYWxlcnQoJ1Z1aSBsw7JuZyBuaOG6rXAgdMOqbiBiw6BuIScpO1xuICAgICAgcmV0dXJuO1xuICAgIH1cblxuICAgIGNvbnN0IGZpbmFsQXJlYSA9IHRhYmxlQXJlYSA9PT0gJ0NVU1RPTScgPyBjdXN0b21BcmVhSW5wdXQudHJpbSgpIDogdGFibGVBcmVhO1xuICAgIGlmICghZmluYWxBcmVhKSB7XG4gICAgICBhbGVydCgnVnVpIGzDsm5nIGNo4buNbiBob+G6t2Mgbmjhuq1wIHTDqm4ga2h1IHbhu7FjIScpO1xuICAgICAgcmV0dXJuO1xuICAgIH1cblxuICAgIHNldFNhdmluZyh0cnVlKTtcbiAgICB0cnkge1xuICAgICAgaWYgKGVkaXRpbmdJZCkge1xuICAgICAgICAvLyBD4bqtcCBuaOG6rXRcbiAgICAgICAgY29uc3QgcmVzID0gYXdhaXQgYXBpU2VydmljZS51cGRhdGVUYWJsZShlZGl0aW5nSWQsIHtcbiAgICAgICAgICBuYW1lOiB0YWJsZU5hbWUudHJpbSgpLFxuICAgICAgICAgIGFyZWE6IGZpbmFsQXJlYSxcbiAgICAgICAgICBzZWF0czogTnVtYmVyKHRhYmxlU2VhdHMpXG4gICAgICAgIH0pO1xuICAgICAgICBpZiAocmVzLnN1Y2Nlc3MpIHtcbiAgICAgICAgICBzZXROb3RpZmljYXRpb24oJ8SQw6MgY+G6rXAgbmjhuq10IGLDoG4gdGjDoG5oIGPDtG5nIScpO1xuICAgICAgICAgIHJlc2V0Rm9ybSgpO1xuICAgICAgICAgIGxvYWRUYWJsZXMoKTtcbiAgICAgICAgfVxuICAgICAgfSBlbHNlIHtcbiAgICAgICAgLy8gVGjDqm0gbeG7m2lcbiAgICAgICAgY29uc3QgcmVzID0gYXdhaXQgYXBpU2VydmljZS5jcmVhdGVUYWJsZSh7XG4gICAgICAgICAgbmFtZTogdGFibGVOYW1lLnRyaW0oKSxcbiAgICAgICAgICBhcmVhOiBmaW5hbEFyZWEsXG4gICAgICAgICAgc2VhdHM6IE51bWJlcih0YWJsZVNlYXRzKVxuICAgICAgICB9KTtcbiAgICAgICAgaWYgKHJlcy5zdWNjZXNzKSB7XG4gICAgICAgICAgc2V0Tm90aWZpY2F0aW9uKCfEkMOjIHRow6ptIGLDoG4gbeG7m2kgdsOgbyBzxqEgxJHhu5MgdGjDoG5oIGPDtG5nIScpO1xuICAgICAgICAgIHJlc2V0Rm9ybSgpO1xuICAgICAgICAgIGxvYWRUYWJsZXMoKTtcbiAgICAgICAgfVxuICAgICAgfVxuICAgICAgc2V0VGltZW91dCgoKSA9PiBzZXROb3RpZmljYXRpb24oJycpLCAzMDAwKTtcbiAgICB9IGNhdGNoIChlcnIpIHtcbiAgICAgIGFsZXJ0KGVyci5tZXNzYWdlIHx8ICdM4buXaSBraGkgbMawdSB0aMO0bmcgdGluIGLDoG4hJyk7XG4gICAgfSBmaW5hbGx5IHtcbiAgICAgIHNldFNhdmluZyhmYWxzZSk7XG4gICAgfVxuICB9O1xuXG4gIGNvbnN0IGhhbmRsZURlbGV0ZVRhYmxlID0gYXN5bmMgKGlkLCBuYW1lKSA9PiB7XG4gICAgaWYgKHdpbmRvdy5jb25maXJtKGBC4bqhbiBjw7MgY2jhuq9jIGNo4bqvbiBtdeG7kW4geMOzYSBcIiR7bmFtZX1cIiBraOG7j2kgc8ahIMSR4buTIGtow7RuZz9gKSkge1xuICAgICAgdHJ5IHtcbiAgICAgICAgY29uc3QgcmVzID0gYXdhaXQgYXBpU2VydmljZS5kZWxldGVUYWJsZShpZCk7XG4gICAgICAgIGlmIChyZXMuc3VjY2Vzcykge1xuICAgICAgICAgIHNldE5vdGlmaWNhdGlvbihgxJDDoyB4w7NhIFwiJHtuYW1lfVwiIHRow6BuaCBjw7RuZyFgKTtcbiAgICAgICAgICBzZXRUaW1lb3V0KCgpID0+IHNldE5vdGlmaWNhdGlvbignJyksIDMwMDApO1xuICAgICAgICAgIGxvYWRUYWJsZXMoKTtcbiAgICAgICAgfVxuICAgICAgfSBjYXRjaCAoZXJyKSB7XG4gICAgICAgIGFsZXJ0KGVyci5tZXNzYWdlIHx8ICdM4buXaSBraGkgeMOzYSBiw6BuIScpO1xuICAgICAgfVxuICAgIH1cbiAgfTtcblxuICByZXR1cm4gKFxuICAgIDxkaXYgY2xhc3NOYW1lPVwic3BhY2UteS02IG1heC13LTd4bCBteC1hdXRvIHBiLTEyXCI+XG4gICAgICB7LyogVG9wIEJhbm5lciBIZWFkZXIgKi99XG4gICAgICA8ZGl2IGNsYXNzTmFtZT1cImJnLWdyYWRpZW50LXRvLXIgZnJvbS1jb2ZmZWUtOTAwIHZpYS1jb2ZmZWUtODAwIHRvLWFtYmVyLTkwMCB0ZXh0LXdoaXRlIHAtNiByb3VuZGVkLTJ4bCBzaGFkb3ctc20gZmxleCBmbGV4LWNvbCBtZDpmbGV4LXJvdyBpdGVtcy1zdGFydCBtZDppdGVtcy1jZW50ZXIganVzdGlmeS1iZXR3ZWVuIGdhcC00XCI+XG4gICAgICAgIDxkaXY+XG4gICAgICAgICAgPGRpdiBjbGFzc05hbWU9XCJmbGV4IGl0ZW1zLWNlbnRlciBnYXAtMiB0ZXh0LWFtYmVyLTMwMCBmb250LWJvbGQgdGV4dC14cyB1cHBlcmNhc2UgdHJhY2tpbmctd2lkZXIgbWItMVwiPlxuICAgICAgICAgICAgPFNwYXJrbGVzIGNsYXNzTmFtZT1cInctNCBoLTRcIiAvPiBC4buRIFRo4bqvbmcgU3R1ZGlvIExheW91dFxuICAgICAgICAgIDwvZGl2PlxuICAgICAgICAgIDxoMiBjbGFzc05hbWU9XCJ0ZXh0LTJ4bCBmb250LWJsYWNrIGZsZXggaXRlbXMtY2VudGVyIGdhcC0yXCI+XG4gICAgICAgICAgICDwn46oIFRoaeG6v3QgS+G6vyAmIFF14bqjbiBMw70gU8ahIMSQ4buTIELDoG4gUXXDoW4gQ8OgIFBow6pcbiAgICAgICAgICA8L2gyPlxuICAgICAgICAgIDxwIGNsYXNzTmFtZT1cInRleHQteHMgdGV4dC1jb2ZmZWUtMjAwIG10LTEgbWF4LXctMnhsXCI+XG4gICAgICAgICAgICBUw7l5IGNo4buJbmggbGluaCBob+G6oXQgc8ahIMSR4buTIGLDoG4sIHPhu5EgbMaw4bujbmcgZ2jhur8gdsOgIGNoaWEga2h1IHbhu7FjIHJpw6puZyBiaeG7h3QgY2hvIHThu6tuZyBraMO0bmcgZ2lhbiBxdcOhbiAoVOG6p25nIDEsIFThuqduZyAyLCBCYW4gY8O0bmcsIFPDom4gdsaw4budbiwgUGjDsm5nIFZJUC4uLikuXG4gICAgICAgICAgPC9wPlxuICAgICAgICA8L2Rpdj5cblxuICAgICAgICB7LyogU3RhdHMgU3VtbWFyeSBCYWRnZXMgKi99XG4gICAgICAgIDxkaXYgY2xhc3NOYW1lPVwiZmxleCBpdGVtcy1jZW50ZXIgZ2FwLTMgYmctd2hpdGUvMTAgYmFja2Ryb3AtYmx1ci1tZCBwLTMgcm91bmRlZC14bCBib3JkZXIgYm9yZGVyLXdoaXRlLzEwXCI+XG4gICAgICAgICAgPGRpdiBjbGFzc05hbWU9XCJ0ZXh0LWNlbnRlciBweC0zIGJvcmRlci1yIGJvcmRlci13aGl0ZS8xMFwiPlxuICAgICAgICAgICAgPGRpdiBjbGFzc05hbWU9XCJ0ZXh0LXhzIHRleHQtY29mZmVlLTIwMFwiPlThu5VuZyBz4buRIGLDoG48L2Rpdj5cbiAgICAgICAgICAgIDxkaXYgY2xhc3NOYW1lPVwidGV4dC1sZyBmb250LWJsYWNrIHRleHQtYW1iZXItMzAwXCI+e3N0YXRzLnRvdGFsVGFibGVzfSBiw6BuPC9kaXY+XG4gICAgICAgICAgPC9kaXY+XG4gICAgICAgICAgPGRpdiBjbGFzc05hbWU9XCJ0ZXh0LWNlbnRlciBweC0zIGJvcmRlci1yIGJvcmRlci13aGl0ZS8xMFwiPlxuICAgICAgICAgICAgPGRpdiBjbGFzc05hbWU9XCJ0ZXh0LXhzIHRleHQtY29mZmVlLTIwMFwiPlPhu6ljIGNo4bupYTwvZGl2PlxuICAgICAgICAgICAgPGRpdiBjbGFzc05hbWU9XCJ0ZXh0LWxnIGZvbnQtYmxhY2sgdGV4dC1lbWVyYWxkLTMwMFwiPntzdGF0cy50b3RhbFNlYXRzfSBnaOG6vzwvZGl2PlxuICAgICAgICAgIDwvZGl2PlxuICAgICAgICAgIDxkaXYgY2xhc3NOYW1lPVwidGV4dC1jZW50ZXIgcHgtM1wiPlxuICAgICAgICAgICAgPGRpdiBjbGFzc05hbWU9XCJ0ZXh0LXhzIHRleHQtY29mZmVlLTIwMFwiPktodSB24buxYzwvZGl2PlxuICAgICAgICAgICAgPGRpdiBjbGFzc05hbWU9XCJ0ZXh0LWxnIGZvbnQtYmxhY2sgdGV4dC1za3ktMzAwXCI+e3N0YXRzLnVuaXF1ZUFyZWFzfSBraHU8L2Rpdj5cbiAgICAgICAgICA8L2Rpdj5cbiAgICAgICAgPC9kaXY+XG4gICAgICA8L2Rpdj5cblxuICAgICAge25vdGlmaWNhdGlvbiAmJiAoXG4gICAgICAgIDxkaXYgY2xhc3NOYW1lPVwicC00IGJnLWVtZXJhbGQtNTAgYm9yZGVyIGJvcmRlci1lbWVyYWxkLTIwMCB0ZXh0LWVtZXJhbGQtODAwIHJvdW5kZWQteGwgdGV4dC14cyBmb250LWJvbGQgZmxleCBpdGVtcy1jZW50ZXIgZ2FwLTIgc2hhZG93LTJ4c1wiPlxuICAgICAgICAgIDxDaGVjayBjbGFzc05hbWU9XCJ3LTQgaC00IHRleHQtZW1lcmFsZC02MDAgZmxleC1zaHJpbmstMFwiIC8+XG4gICAgICAgICAgPHNwYW4+e25vdGlmaWNhdGlvbn08L3NwYW4+XG4gICAgICAgIDwvZGl2PlxuICAgICAgKX1cblxuICAgICAgey8qIE1haW4gR3JpZDogRm9ybSBMZWZ0IChDb2wtNCkgJiBQcmV2aWV3IFJpZ2h0IChDb2wtOCkgKi99XG4gICAgICA8ZGl2IGNsYXNzTmFtZT1cImdyaWQgZ3JpZC1jb2xzLTEgbGc6Z3JpZC1jb2xzLTEyIGdhcC02XCI+XG4gICAgICAgIHsvKiBMZWZ0IEZvcm06IERlc2lnbmVyIElucHV0cyAqL31cbiAgICAgICAgPGRpdiBjbGFzc05hbWU9XCJsZzpjb2wtc3Bhbi00IGJnLXdoaXRlIHAtNSByb3VuZGVkLTJ4bCBib3JkZXIgYm9yZGVyLWdyYXktMjAwIHNoYWRvdy0yeHMgaC1maXQgc3BhY2UteS00XCI+XG4gICAgICAgICAgPGRpdiBjbGFzc05hbWU9XCJmbGV4IGl0ZW1zLWNlbnRlciBqdXN0aWZ5LWJldHdlZW4gYm9yZGVyLWIgYm9yZGVyLWdyYXktMTAwIHBiLTNcIj5cbiAgICAgICAgICAgIDxoMyBjbGFzc05hbWU9XCJmb250LWJvbGQgdGV4dC1ncmF5LTgwMCB0ZXh0LXNtIGZsZXggaXRlbXMtY2VudGVyIGdhcC0yXCI+XG4gICAgICAgICAgICAgIDxTbGlkZXJzIGNsYXNzTmFtZT1cInctNCBoLTQgdGV4dC1jb2ZmZWUtNjAwXCIgLz5cbiAgICAgICAgICAgICAge2VkaXRpbmdJZCA/ICdDaOG7iW5oIFPhu61hIFRow7RuZyBUaW4gQsOgbicgOiAnVGjDqm0gQsOgbiBN4bubaSBDaG8gUXXDoW4nfVxuICAgICAgICAgICAgPC9oMz5cbiAgICAgICAgICAgIHtlZGl0aW5nSWQgJiYgKFxuICAgICAgICAgICAgICA8YnV0dG9uXG4gICAgICAgICAgICAgICAgb25DbGljaz17cmVzZXRGb3JtfVxuICAgICAgICAgICAgICAgIGNsYXNzTmFtZT1cInRleHQteHMgdGV4dC1ncmF5LTQwMCBob3Zlcjp0ZXh0LWdyYXktNjAwIGZsZXggaXRlbXMtY2VudGVyIGdhcC0xXCJcbiAgICAgICAgICAgICAgPlxuICAgICAgICAgICAgICAgIDxYIGNsYXNzTmFtZT1cInctMy41IGgtMy41XCIgLz4gSOG7p3kgc+G7rWFcbiAgICAgICAgICAgICAgPC9idXR0b24+XG4gICAgICAgICAgICApfVxuICAgICAgICAgIDwvZGl2PlxuXG4gICAgICAgICAgPGZvcm0gb25TdWJtaXQ9e2hhbmRsZVN1Ym1pdH0gY2xhc3NOYW1lPVwic3BhY2UteS00IHRleHQteHNcIj5cbiAgICAgICAgICAgIHsvKiBUw6puIGLDoG4gKi99XG4gICAgICAgICAgICA8ZGl2PlxuICAgICAgICAgICAgICA8bGFiZWwgY2xhc3NOYW1lPVwiZm9udC1ib2xkIHRleHQtZ3JheS03MDAgYmxvY2sgbWItMVwiPlTDqm4gQsOgbiAvIFPhu5EgQsOgbiAqPC9sYWJlbD5cbiAgICAgICAgICAgICAgPGlucHV0XG4gICAgICAgICAgICAgICAgdHlwZT1cInRleHRcIlxuICAgICAgICAgICAgICAgIHZhbHVlPXt0YWJsZU5hbWV9XG4gICAgICAgICAgICAgICAgb25DaGFuZ2U9eyhlKSA9PiBzZXRUYWJsZU5hbWUoZS50YXJnZXQudmFsdWUpfVxuICAgICAgICAgICAgICAgIHBsYWNlaG9sZGVyPVwiVmQ6IELDoG4gMDEsIELDoG4gQmFuIEPDtG5nIDAyLCBCw6BuIFZJUCAxLi4uXCJcbiAgICAgICAgICAgICAgICBjbGFzc05hbWU9XCJ3LWZ1bGwgcHgtMyBweS0yLjUgYmctZ3JheS01MCBib3JkZXIgYm9yZGVyLWdyYXktMjAwIHJvdW5kZWQteGwgdGV4dC14cyBvdXRsaW5lLW5vbmUgZm9jdXM6Ymctd2hpdGUgZm9jdXM6Ym9yZGVyLWNvZmZlZS02MDAgdHJhbnNpdGlvblwiXG4gICAgICAgICAgICAgICAgcmVxdWlyZWRcbiAgICAgICAgICAgICAgLz5cbiAgICAgICAgICAgIDwvZGl2PlxuXG4gICAgICAgICAgICB7LyogQ2jhu41uIEtodSB24buxYyAqL31cbiAgICAgICAgICAgIDxkaXY+XG4gICAgICAgICAgICAgIDxsYWJlbCBjbGFzc05hbWU9XCJmb250LWJvbGQgdGV4dC1ncmF5LTcwMCBibG9jayBtYi0xXCI+S2h1IFbhu7FjIEtow7RuZyBHaWFuICo8L2xhYmVsPlxuICAgICAgICAgICAgICA8c2VsZWN0XG4gICAgICAgICAgICAgICAgdmFsdWU9e3RhYmxlQXJlYX1cbiAgICAgICAgICAgICAgICBvbkNoYW5nZT17KGUpID0+IHNldFRhYmxlQXJlYShlLnRhcmdldC52YWx1ZSl9XG4gICAgICAgICAgICAgICAgY2xhc3NOYW1lPVwidy1mdWxsIHB4LTMgcHktMi41IGJnLWdyYXktNTAgYm9yZGVyIGJvcmRlci1ncmF5LTIwMCByb3VuZGVkLXhsIHRleHQteHMgb3V0bGluZS1ub25lIGZvY3VzOmJnLXdoaXRlIGZvY3VzOmJvcmRlci1jb2ZmZWUtNjAwIGZvbnQtbWVkaXVtIHRyYW5zaXRpb25cIlxuICAgICAgICAgICAgICA+XG4gICAgICAgICAgICAgICAge2FyZWFzTGlzdC5tYXAoKGEpID0+IChcbiAgICAgICAgICAgICAgICAgIDxvcHRpb24ga2V5PXthfSB2YWx1ZT17YX0+XG4gICAgICAgICAgICAgICAgICAgIHthfVxuICAgICAgICAgICAgICAgICAgPC9vcHRpb24+XG4gICAgICAgICAgICAgICAgKSl9XG4gICAgICAgICAgICAgICAgPG9wdGlvbiB2YWx1ZT1cIkNVU1RPTVwiPisgVOG6oW8ga2h1IHbhu7FjIG3hu5tpLi4uPC9vcHRpb24+XG4gICAgICAgICAgICAgIDwvc2VsZWN0PlxuXG4gICAgICAgICAgICAgIHsvKiDDlCBuaOG6rXAga2h1IHbhu7FjIG3hu5tpIG7hur91IGNo4buNbiBDVVNUT00gKi99XG4gICAgICAgICAgICAgIHt0YWJsZUFyZWEgPT09ICdDVVNUT00nICYmIChcbiAgICAgICAgICAgICAgICA8aW5wdXRcbiAgICAgICAgICAgICAgICAgIHR5cGU9XCJ0ZXh0XCJcbiAgICAgICAgICAgICAgICAgIHZhbHVlPXtjdXN0b21BcmVhSW5wdXR9XG4gICAgICAgICAgICAgICAgICBvbkNoYW5nZT17KGUpID0+IHNldEN1c3RvbUFyZWFJbnB1dChlLnRhcmdldC52YWx1ZSl9XG4gICAgICAgICAgICAgICAgICBwbGFjZWhvbGRlcj1cIk5o4bqtcCB0w6puIGtodSB24buxYyBt4bubaSAodmQ6IFThuqduZyBUcuG7h3QsIFPDom4gVGjGsOG7o25nLi4uKVwiXG4gICAgICAgICAgICAgICAgICBjbGFzc05hbWU9XCJ3LWZ1bGwgbXQtMiBweC0zIHB5LTIgYmctYW1iZXItNTAgYm9yZGVyIGJvcmRlci1hbWJlci0zMDAgdGV4dC1hbWJlci05MDAgcm91bmRlZC14bCB0ZXh0LXhzIG91dGxpbmUtbm9uZSBmb2N1czpiZy13aGl0ZSBmb2N1czpib3JkZXItY29mZmVlLTYwMCB0cmFuc2l0aW9uXCJcbiAgICAgICAgICAgICAgICAgIHJlcXVpcmVkXG4gICAgICAgICAgICAgICAgLz5cbiAgICAgICAgICAgICAgKX1cbiAgICAgICAgICAgIDwvZGl2PlxuXG4gICAgICAgICAgICB7LyogU+G7kSBnaOG6vyAqL31cbiAgICAgICAgICAgIDxkaXY+XG4gICAgICAgICAgICAgIDxsYWJlbCBjbGFzc05hbWU9XCJmb250LWJvbGQgdGV4dC1ncmF5LTcwMCBibG9jayBtYi0xXCI+U+G7qWMgQ2jhu6lhIChT4buRIEdo4bq/KTwvbGFiZWw+XG4gICAgICAgICAgICAgIDxkaXYgY2xhc3NOYW1lPVwiZ3JpZCBncmlkLWNvbHMtNCBnYXAtMlwiPlxuICAgICAgICAgICAgICAgIHtbMiwgNCwgNiwgOF0ubWFwKChzKSA9PiAoXG4gICAgICAgICAgICAgICAgICA8YnV0dG9uXG4gICAgICAgICAgICAgICAgICAgIGtleT17c31cbiAgICAgICAgICAgICAgICAgICAgdHlwZT1cImJ1dHRvblwiXG4gICAgICAgICAgICAgICAgICAgIG9uQ2xpY2s9eygpID0+IHNldFRhYmxlU2VhdHMocyl9XG4gICAgICAgICAgICAgICAgICAgIGNsYXNzTmFtZT17YHB5LTIgcm91bmRlZC14bCBmb250LWJvbGQgYm9yZGVyIHRyYW5zaXRpb24gJHtcbiAgICAgICAgICAgICAgICAgICAgICB0YWJsZVNlYXRzID09PSBzXG4gICAgICAgICAgICAgICAgICAgICAgICA/ICdiZy1jb2ZmZWUtODAwIHRleHQtYW1iZXItMjAwIGJvcmRlci1jb2ZmZWUtODAwIHNoYWRvdy0yeHMnXG4gICAgICAgICAgICAgICAgICAgICAgICA6ICdiZy13aGl0ZSB0ZXh0LWdyYXktNjAwIGJvcmRlci1ncmF5LTIwMCBob3ZlcjpiZy1ncmF5LTUwJ1xuICAgICAgICAgICAgICAgICAgICB9YH1cbiAgICAgICAgICAgICAgICAgID5cbiAgICAgICAgICAgICAgICAgICAge3N9IEdo4bq/XG4gICAgICAgICAgICAgICAgICA8L2J1dHRvbj5cbiAgICAgICAgICAgICAgICApKX1cbiAgICAgICAgICAgICAgPC9kaXY+XG4gICAgICAgICAgICAgIDxpbnB1dFxuICAgICAgICAgICAgICAgIHR5cGU9XCJudW1iZXJcIlxuICAgICAgICAgICAgICAgIG1pbj1cIjFcIlxuICAgICAgICAgICAgICAgIG1heD1cIjMwXCJcbiAgICAgICAgICAgICAgICB2YWx1ZT17dGFibGVTZWF0c31cbiAgICAgICAgICAgICAgICBvbkNoYW5nZT17KGUpID0+IHNldFRhYmxlU2VhdHMoTnVtYmVyKGUudGFyZ2V0LnZhbHVlKSl9XG4gICAgICAgICAgICAgICAgY2xhc3NOYW1lPVwidy1mdWxsIG10LTIgcHgtMyBweS0yIGJnLWdyYXktNTAgYm9yZGVyIGJvcmRlci1ncmF5LTIwMCByb3VuZGVkLXhsIHRleHQteHMgb3V0bGluZS1ub25lIGZvY3VzOmJnLXdoaXRlIGZvY3VzOmJvcmRlci1jb2ZmZWUtNjAwIHRyYW5zaXRpb25cIlxuICAgICAgICAgICAgICAvPlxuICAgICAgICAgICAgPC9kaXY+XG5cbiAgICAgICAgICAgIHsvKiBOw7p0IGLhuqVtIHTDoWMgduG7pSAqL31cbiAgICAgICAgICAgIDxkaXYgY2xhc3NOYW1lPVwicHQtMlwiPlxuICAgICAgICAgICAgICA8YnV0dG9uXG4gICAgICAgICAgICAgICAgdHlwZT1cInN1Ym1pdFwiXG4gICAgICAgICAgICAgICAgZGlzYWJsZWQ9e3NhdmluZ31cbiAgICAgICAgICAgICAgICBjbGFzc05hbWU9XCJ3LWZ1bGwgcHktMyBiZy1jb2ZmZWUtODAwIGhvdmVyOmJnLWNvZmZlZS05MDAgYWN0aXZlOmJnLWNvZmZlZS05NTAgdGV4dC13aGl0ZSBmb250LWJvbGQgdGV4dC14cyByb3VuZGVkLXhsIHNoYWRvdy14cyB0cmFuc2l0aW9uIGFjdGl2ZTpzY2FsZS1bMC45OF0gZGlzYWJsZWQ6b3BhY2l0eS01MCBmbGV4IGl0ZW1zLWNlbnRlciBqdXN0aWZ5LWNlbnRlciBnYXAtMiBjdXJzb3ItcG9pbnRlclwiXG4gICAgICAgICAgICAgID5cbiAgICAgICAgICAgICAgICB7ZWRpdGluZ0lkID8gPENoZWNrIGNsYXNzTmFtZT1cInctNCBoLTRcIiAvPiA6IDxQbHVzIGNsYXNzTmFtZT1cInctNCBoLTRcIiAvPn1cbiAgICAgICAgICAgICAgICA8c3Bhbj57c2F2aW5nID8gJ8SQYW5nIGzGsHUuLi4nIDogZWRpdGluZ0lkID8gJ0Phuq1wIE5o4bqtdCBUaMO0bmcgVGluIELDoG4nIDogJ1Row6ptIELDoG4gVsOgbyBTxqEgxJDhu5MnfTwvc3Bhbj5cbiAgICAgICAgICAgICAgPC9idXR0b24+XG4gICAgICAgICAgICA8L2Rpdj5cbiAgICAgICAgICA8L2Zvcm0+XG4gICAgICAgIDwvZGl2PlxuXG4gICAgICAgIHsvKiBSaWdodCBQcmV2aWV3OiBJbnRlcmFjdGl2ZSBMYXlvdXQgR3JpZCAqL31cbiAgICAgICAgPGRpdiBjbGFzc05hbWU9XCJsZzpjb2wtc3Bhbi04IGJnLXdoaXRlIHAtNSByb3VuZGVkLTJ4bCBib3JkZXIgYm9yZGVyLWdyYXktMjAwIHNoYWRvdy0yeHMgc3BhY2UteS00XCI+XG4gICAgICAgICAgPGRpdiBjbGFzc05hbWU9XCJmbGV4IGZsZXgtY29sIHNtOmZsZXgtcm93IHNtOml0ZW1zLWNlbnRlciBqdXN0aWZ5LWJldHdlZW4gZ2FwLTMgYm9yZGVyLWIgYm9yZGVyLWdyYXktMTAwIHBiLTNcIj5cbiAgICAgICAgICAgIDxkaXY+XG4gICAgICAgICAgICAgIDxoMyBjbGFzc05hbWU9XCJmb250LWJvbGQgdGV4dC1ncmF5LTgwMCB0ZXh0LXNtIGZsZXggaXRlbXMtY2VudGVyIGdhcC0yXCI+XG4gICAgICAgICAgICAgICAgPEJ1aWxkaW5nIGNsYXNzTmFtZT1cInctNCBoLTQgdGV4dC1jb2ZmZWUtNjAwXCIgLz5cbiAgICAgICAgICAgICAgICBTxqEgxJDhu5MgS2jDtG5nIEdpYW4gQsOgbiBIaeG7h24gVOG6oWlcbiAgICAgICAgICAgICAgPC9oMz5cbiAgICAgICAgICAgICAgPHAgY2xhc3NOYW1lPVwidGV4dC1bMTFweF0gdGV4dC1ncmF5LTQwMCBtdC0wLjVcIj5cbiAgICAgICAgICAgICAgICBOaOG6pXAgdsOgbyBuw7p0IFPhu61hIGhv4bq3YyBYw7NhIHRyw6puIHThu6tuZyB0aOG6uyBiw6BuIMSR4buDIHF14bqjbiBsw70gbmhhbmguXG4gICAgICAgICAgICAgIDwvcD5cbiAgICAgICAgICAgIDwvZGl2PlxuXG4gICAgICAgICAgICB7LyogUmVsb2FkIEJ1dHRvbiAqL31cbiAgICAgICAgICAgIDxidXR0b25cbiAgICAgICAgICAgICAgb25DbGljaz17bG9hZFRhYmxlc31cbiAgICAgICAgICAgICAgY2xhc3NOYW1lPVwicC0yIGJnLWdyYXktNTAgaG92ZXI6YmctZ3JheS0xMDAgcm91bmRlZC14bCB0ZXh0LWdyYXktNjAwIHRyYW5zaXRpb24gZmxleCBpdGVtcy1jZW50ZXIgZ2FwLTEgdGV4dC14cyBmb250LXNlbWlib2xkXCJcbiAgICAgICAgICAgICAgdGl0bGU9XCJU4bqjaSBs4bqhaSBzxqEgxJHhu5NcIlxuICAgICAgICAgICAgPlxuICAgICAgICAgICAgICA8UmVmcmVzaEN3IGNsYXNzTmFtZT17YHctMy41IGgtMy41ICR7bG9hZGluZyA/ICdhbmltYXRlLXNwaW4nIDogJyd9YH0gLz5cbiAgICAgICAgICAgICAgPHNwYW4+Q+G6rXAgbmjhuq10PC9zcGFuPlxuICAgICAgICAgICAgPC9idXR0b24+XG4gICAgICAgICAgPC9kaXY+XG5cbiAgICAgICAgICB7LyogQXJlYSBUYWJzIEZpbHRlciAqL31cbiAgICAgICAgICA8ZGl2IGNsYXNzTmFtZT1cImZsZXggaXRlbXMtY2VudGVyIGdhcC0yIG92ZXJmbG93LXgtYXV0byBwYi0xIG5vLXNjcm9sbGJhclwiPlxuICAgICAgICAgICAgPGJ1dHRvblxuICAgICAgICAgICAgICBvbkNsaWNrPXsoKSA9PiBzZXRBY3RpdmVBcmVhRmlsdGVyKCdBTEwnKX1cbiAgICAgICAgICAgICAgY2xhc3NOYW1lPXtgcHgtMyBweS0xLjUgcm91bmRlZC14bCB0ZXh0LXhzIGZvbnQtYm9sZCB3aGl0ZXNwYWNlLW5vd3JhcCB0cmFuc2l0aW9uIGFjdGl2ZTpzY2FsZS05NSAke1xuICAgICAgICAgICAgICAgIGFjdGl2ZUFyZWFGaWx0ZXIgPT09ICdBTEwnXG4gICAgICAgICAgICAgICAgICA/ICdiZy1jb2ZmZWUtODAwIHRleHQtYW1iZXItMjAwIHNoYWRvdy0yeHMnXG4gICAgICAgICAgICAgICAgICA6ICdiZy1ncmF5LTEwMCB0ZXh0LWdyYXktNjAwIGhvdmVyOmJnLWdyYXktMjAwJ1xuICAgICAgICAgICAgICB9YH1cbiAgICAgICAgICAgID5cbiAgICAgICAgICAgICAg8J+MkCBU4bqldCBj4bqjICh7dGFibGVzLmxlbmd0aH0pXG4gICAgICAgICAgICA8L2J1dHRvbj5cbiAgICAgICAgICAgIHthcmVhc0xpc3QubWFwKChhcmVhKSA9PiB7XG4gICAgICAgICAgICAgIGNvbnN0IGNvdW50ID0gdGFibGVzLmZpbHRlcigodCkgPT4gdC5hcmVhID09PSBhcmVhKS5sZW5ndGg7XG4gICAgICAgICAgICAgIGlmIChjb3VudCA9PT0gMCAmJiBhY3RpdmVBcmVhRmlsdGVyICE9PSBhcmVhKSByZXR1cm4gbnVsbDtcbiAgICAgICAgICAgICAgcmV0dXJuIChcbiAgICAgICAgICAgICAgICA8YnV0dG9uXG4gICAgICAgICAgICAgICAgICBrZXk9e2FyZWF9XG4gICAgICAgICAgICAgICAgICBvbkNsaWNrPXsoKSA9PiBzZXRBY3RpdmVBcmVhRmlsdGVyKGFyZWEpfVxuICAgICAgICAgICAgICAgICAgY2xhc3NOYW1lPXtgcHgtMyBweS0xLjUgcm91bmRlZC14bCB0ZXh0LXhzIGZvbnQtYm9sZCB3aGl0ZXNwYWNlLW5vd3JhcCB0cmFuc2l0aW9uIGFjdGl2ZTpzY2FsZS05NSAke1xuICAgICAgICAgICAgICAgICAgICBhY3RpdmVBcmVhRmlsdGVyID09PSBhcmVhXG4gICAgICAgICAgICAgICAgICAgICAgPyAnYmctY29mZmVlLTgwMCB0ZXh0LWFtYmVyLTIwMCBzaGFkb3ctMnhzJ1xuICAgICAgICAgICAgICAgICAgICAgIDogJ2JnLWdyYXktMTAwIHRleHQtZ3JheS02MDAgaG92ZXI6YmctZ3JheS0yMDAnXG4gICAgICAgICAgICAgICAgICB9YH1cbiAgICAgICAgICAgICAgICA+XG4gICAgICAgICAgICAgICAgICDwn5ONIHthcmVhfSAoe2NvdW50fSlcbiAgICAgICAgICAgICAgICA8L2J1dHRvbj5cbiAgICAgICAgICAgICAgKTtcbiAgICAgICAgICAgIH0pfVxuICAgICAgICAgIDwvZGl2PlxuXG4gICAgICAgICAgey8qIENhcmRzIEdyaWQgKi99XG4gICAgICAgICAge2xvYWRpbmcgJiYgdGFibGVzLmxlbmd0aCA9PT0gMCA/IChcbiAgICAgICAgICAgIDxkaXYgY2xhc3NOYW1lPVwicC0xMiB0ZXh0LWNlbnRlciB0ZXh0LWdyYXktNDAwIHRleHQteHNcIj7EkGFuZyB04bqjaSBzxqEgxJHhu5MgYsOgbi4uLjwvZGl2PlxuICAgICAgICAgICkgOiBmaWx0ZXJlZFRhYmxlcy5sZW5ndGggPT09IDAgPyAoXG4gICAgICAgICAgICA8ZGl2IGNsYXNzTmFtZT1cInAtMTIgdGV4dC1jZW50ZXIgdGV4dC1ncmF5LTQwMCB0ZXh0LXhzIGZsZXggZmxleC1jb2wgaXRlbXMtY2VudGVyIGp1c3RpZnktY2VudGVyXCI+XG4gICAgICAgICAgICAgIDxDb2ZmZWUgY2xhc3NOYW1lPVwidy0xMCBoLTEwIHRleHQtZ3JheS0yMDAgbWItMlwiIC8+XG4gICAgICAgICAgICAgIDxwPkNoxrBhIGPDsyBiw6BuIG7DoG8g4bufIGtodSB24buxYyBuw6B5LjwvcD5cbiAgICAgICAgICAgICAgPHAgY2xhc3NOYW1lPVwidGV4dC1bMTFweF0gdGV4dC1ncmF5LTMwMCBtdC0xXCI+RMO5bmcgZm9ybSBiw6puIHRyw6FpIMSR4buDIHRow6ptIGLDoG4gbeG7m2kuPC9wPlxuICAgICAgICAgICAgPC9kaXY+XG4gICAgICAgICAgKSA6IChcbiAgICAgICAgICAgIDxkaXYgY2xhc3NOYW1lPVwiZ3JpZCBncmlkLWNvbHMtMiBzbTpncmlkLWNvbHMtMyBtZDpncmlkLWNvbHMtNCBnYXAtMy41XCI+XG4gICAgICAgICAgICAgIHtmaWx0ZXJlZFRhYmxlcy5tYXAoKHRhYmxlKSA9PiAoXG4gICAgICAgICAgICAgICAgPGRpdlxuICAgICAgICAgICAgICAgICAga2V5PXt0YWJsZS5pZH1cbiAgICAgICAgICAgICAgICAgIGNsYXNzTmFtZT17YHAtMy41IHJvdW5kZWQtMnhsIGJvcmRlciB0cmFuc2l0aW9uIGR1cmF0aW9uLTIwMCBmbGV4IGZsZXgtY29sIGp1c3RpZnktYmV0d2VlbiBoLTM2IHJlbGF0aXZlIGdyb3VwIHNoYWRvdy0yeHMgJHtcbiAgICAgICAgICAgICAgICAgICAgZWRpdGluZ0lkID09PSB0YWJsZS5pZFxuICAgICAgICAgICAgICAgICAgICAgID8gJ2JnLWFtYmVyLTUwIGJvcmRlci1hbWJlci00MDAgcmluZy0yIHJpbmctYW1iZXItNDAwLzMwJ1xuICAgICAgICAgICAgICAgICAgICAgIDogJ2JnLXdoaXRlIGJvcmRlci1ncmF5LTIwMCBob3Zlcjpib3JkZXItY29mZmVlLTUwMCBob3ZlcjpzaGFkb3ctbWQnXG4gICAgICAgICAgICAgICAgICB9YH1cbiAgICAgICAgICAgICAgICA+XG4gICAgICAgICAgICAgICAgICA8ZGl2IGNsYXNzTmFtZT1cImZsZXggaXRlbXMtY2VudGVyIGp1c3RpZnktYmV0d2VlblwiPlxuICAgICAgICAgICAgICAgICAgICA8c3BhbiBjbGFzc05hbWU9XCJ0ZXh0LVsxMHB4XSBmb250LWJvbGQgcHgtMiBweS0wLjUgcm91bmRlZC1mdWxsIGJnLWdyYXktMTAwIHRleHQtZ3JheS02MDAgYm9yZGVyIGJvcmRlci1ncmF5LTIwMFwiPlxuICAgICAgICAgICAgICAgICAgICAgIElEICN7dGFibGUuaWR9XG4gICAgICAgICAgICAgICAgICAgIDwvc3Bhbj5cbiAgICAgICAgICAgICAgICAgICAgPHNwYW4gY2xhc3NOYW1lPVwidGV4dC1bMTFweF0gZm9udC1ib2xkIHRleHQtY29mZmVlLTgwMCBmbGV4IGl0ZW1zLWNlbnRlciBnYXAtMVwiPlxuICAgICAgICAgICAgICAgICAgICAgIDxVc2VycyBjbGFzc05hbWU9XCJ3LTMgaC0zIHRleHQtY29mZmVlLTYwMFwiIC8+IHt0YWJsZS5zZWF0c30gZ2jhur9cbiAgICAgICAgICAgICAgICAgICAgPC9zcGFuPlxuICAgICAgICAgICAgICAgICAgPC9kaXY+XG5cbiAgICAgICAgICAgICAgICAgIDxkaXYgY2xhc3NOYW1lPVwibXktMSB0ZXh0LWNlbnRlclwiPlxuICAgICAgICAgICAgICAgICAgICA8aDQgY2xhc3NOYW1lPVwiZm9udC1leHRyYWJvbGQgdGV4dC1ncmF5LTgwMCB0ZXh0LXNtXCI+e3RhYmxlLm5hbWV9PC9oND5cbiAgICAgICAgICAgICAgICAgICAgPHAgY2xhc3NOYW1lPVwidGV4dC1bMTBweF0gdGV4dC1ncmF5LTQwMCBsaW5lLWNsYW1wLTEgbXQtMC41XCI+e3RhYmxlLmFyZWF9PC9wPlxuICAgICAgICAgICAgICAgICAgPC9kaXY+XG5cbiAgICAgICAgICAgICAgICAgIHsvKiBBY3Rpb25zICovfVxuICAgICAgICAgICAgICAgICAgPGRpdiBjbGFzc05hbWU9XCJmbGV4IGl0ZW1zLWNlbnRlciBnYXAtMSBwdC0yIGJvcmRlci10IGJvcmRlci1ncmF5LTEwMFwiPlxuICAgICAgICAgICAgICAgICAgICA8YnV0dG9uXG4gICAgICAgICAgICAgICAgICAgICAgb25DbGljaz17KCkgPT4gaGFuZGxlRWRpdFRhYmxlKHRhYmxlKX1cbiAgICAgICAgICAgICAgICAgICAgICBjbGFzc05hbWU9XCJmbGV4LTEgcHktMSBiZy1ncmF5LTUwIGhvdmVyOmJnLWFtYmVyLTEwMCBob3Zlcjp0ZXh0LWFtYmVyLTkwMCB0ZXh0LWdyYXktNjAwIGZvbnQtYm9sZCB0ZXh0LVsxMXB4XSByb3VuZGVkLWxnIHRyYW5zaXRpb24gZmxleCBpdGVtcy1jZW50ZXIganVzdGlmeS1jZW50ZXIgZ2FwLTFcIlxuICAgICAgICAgICAgICAgICAgICA+XG4gICAgICAgICAgICAgICAgICAgICAgPEVkaXQgY2xhc3NOYW1lPVwidy0zIGgtM1wiIC8+IFPhu61hXG4gICAgICAgICAgICAgICAgICAgIDwvYnV0dG9uPlxuICAgICAgICAgICAgICAgICAgICA8YnV0dG9uXG4gICAgICAgICAgICAgICAgICAgICAgb25DbGljaz17KCkgPT4gaGFuZGxlRGVsZXRlVGFibGUodGFibGUuaWQsIHRhYmxlLm5hbWUpfVxuICAgICAgICAgICAgICAgICAgICAgIGNsYXNzTmFtZT1cInAtMSBiZy1ncmF5LTUwIGhvdmVyOmJnLXJlZC0xMDAgdGV4dC1ncmF5LTQwMCBob3Zlcjp0ZXh0LXJlZC02MDAgcm91bmRlZC1sZyB0cmFuc2l0aW9uXCJcbiAgICAgICAgICAgICAgICAgICAgICB0aXRsZT1cIljDs2EgYsOgbiBuw6B5XCJcbiAgICAgICAgICAgICAgICAgICAgPlxuICAgICAgICAgICAgICAgICAgICAgIDxUcmFzaDIgY2xhc3NOYW1lPVwidy0zLjUgaC0zLjVcIiAvPlxuICAgICAgICAgICAgICAgICAgICA8L2J1dHRvbj5cbiAgICAgICAgICAgICAgICAgIDwvZGl2PlxuICAgICAgICAgICAgICAgIDwvZGl2PlxuICAgICAgICAgICAgICApKX1cbiAgICAgICAgICAgIDwvZGl2PlxuICAgICAgICAgICl9XG4gICAgICAgIDwvZGl2PlxuICAgICAgPC9kaXY+XG4gICAgPC9kaXY+XG4gICk7XG59XG4iXSwiZmlsZSI6IkM6L1VzZXJzL0xlbm92by9Eb3dubG9hZHMvdGh1IG11YyBsYW0gdmllYyBhZ2VudC9mcm9udGVuZC9zcmMvY29tcG9uZW50cy9UYWJsZURlc2lnbmVyLmpzeCJ9

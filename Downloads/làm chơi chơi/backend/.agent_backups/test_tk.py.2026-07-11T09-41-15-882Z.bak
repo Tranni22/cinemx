@@ -1,0 +1,11 @@
+import tkinter as tk
+try:
+    with open("test.log", "w") as f:
+        f.write("Starting tkinter\n")
+        root = tk.Tk()
+        f.write("Tkinter initialized\n")
+        root.destroy()
+        f.write("Finished\n")
+except Exception as e:
+    with open("error.log", "w") as f:
+        f.write(str(e))

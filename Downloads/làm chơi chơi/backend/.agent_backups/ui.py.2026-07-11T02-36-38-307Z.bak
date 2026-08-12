@@ -1,0 +1,93 @@
+import subprocess
+import sys
+
+# Path to the engine
+ENGINE_PATH = r"C:\Users\Lenovo\Downloads\EMBRYO26\pbrain-embryo26.exe"
+
+class Board:
+    def __init__(self, width, height):
+        self.width = width
+        self.height = height
+        # Initialize board: '.' = empty
+        self.board = [['.' for _ in range(width)] for _ in range(height)]
+
+    def display(self):
+        # Column headers
+        print("   " + " ".join([chr(ord('A') + i) for i in range(self.width)]))
+        for i, row in enumerate(self.board):
+            # Row headers
+            print(f"{i+1:2} " + " ".join(row))
+
+    def update(self, x, y, player):
+        # player: 1 for human ('X'), 2 for engine ('O')
+        if 0 <= x < self.width and 0 <= y < self.height:
+            self.board[y][x] = 'X' if player == 1 else 'O'
+
+class CaroUI:
+    def __init__(self, engine_path):
+        self.engine_path = engine_path
+        self.process = None
+        # Board dimensions per request: 15x19
+        self.width = 15
+        self.height = 19
+        self.board = Board(self.width, self.height)
+
+    def start_engine(self):
+        self.process = subprocess.Popen(
+            self.engine_path,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True
+        )
+
+    def send_command(self, command):
+        if self.process and self.process.poll() is None:
+            self.process.stdin.write(command + "\n")
+            self.process.stdin.flush()
+            response = self.process.stdout.readline()
+            return response.strip()
+        return None
+
+    def run(self):
+        self.start_engine()
+        print("Engine started.")
+        
+        # Initialize protocol
+        print(f"Engine: {self.send_command(f'START {self.width}')}")
+        
+        # Simple loop for game (Human starts)
+        print("Game started. Input format: x,y (e.g., 7,9)")
+        while True:
+            self.board.display()
+            
+            try:
+                move = input("Your move (x,y) or 'quit': ")
+                if move.lower() == 'quit':
+                    break
+                
+                x, y = map(int, move.split(','))
+                self.board.update(x, y, 1)
+                
+                # Send to engine
+                engine_response = self.send_command(f"TURN {x},{y}")
+                print(f"Engine response: {engine_response}")
+                
+                # Assume engine responds with its move in format: 1234, 5678 (or similar)
+                # This is a simplified protocol handler
+                if engine_response and engine_response.startswith("1234,"): # Example protocol response
+                     ex, ey = map(int, engine_response.split(",")[1:])
+                     self.board.update(ex, ey, 2)
+                     
+            except ValueError:
+                print("Invalid input! Use x,y format.")
+            except Exception as e:
+                print(f"Error: {e}")
+                break
+        
+        self.process.terminate()
+        print("Game ended.")
+
+if __name__ == "__main__":
+    ui = CaroUI(ENGINE_PATH)
+    ui.run()

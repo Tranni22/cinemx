@@ -1,0 +1,176 @@
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+
+const ROWS = 5;
+const COLS = 9;
+const CELL_SIZE = 80;
+
+canvas.width = COLS * CELL_SIZE;
+canvas.height = ROWS * CELL_SIZE + 100; // Extra space for menu
+
+class Plant {
+    constructor(row, col) {
+        this.row = row;
+        this.col = col;
+        this.health = 100;
+        this.lastShot = 0;
+        this.sway = 0;
+    }
+    draw() {
+        const x = this.col * CELL_SIZE + CELL_SIZE/2;
+        const y = this.row * CELL_SIZE + CELL_SIZE/2;
+        this.sway = Math.sin(Date.now() / 300) * 2;
+        
+        // Stem
+        ctx.fillStyle = '#2E8B57';
+        ctx.fillRect(x - 3 + this.sway, y, 6, 20);
+        
+        // Petals
+        ctx.fillStyle = '#FFD700';
+        for(let i=0; i<8; i++) {
+            ctx.beginPath();
+            ctx.arc(x + Math.cos(i/8*Math.PI*2)*15 + this.sway, y + Math.sin(i/8*Math.PI*2)*15, 8, 0, Math.PI*2);
+            ctx.fill();
+        }
+        // Face
+        ctx.fillStyle = '#DAA520';
+        ctx.beginPath(); ctx.arc(x + this.sway, y, 12, 0, Math.PI*2); ctx.fill();
+    }
+}
+
+class Zombie {
+    constructor(row) {
+        this.row = row;
+        this.x = canvas.width;
+        this.health = 100;
+        this.color = Math.random() > 0.5 ? '#556B2F' : '#696969'; // Variation
+    }
+    draw() {
+        const x = this.x;
+        const y = this.row * CELL_SIZE + 10;
+        
+        // Body
+        ctx.fillStyle = this.color;
+        ctx.fillRect(x+10, y+20, 30, 40);
+        
+        // Head
+        ctx.fillStyle = '#8B4513';
+        ctx.beginPath(); ctx.arc(x+25, y+20, 15, 0, Math.PI*2); ctx.fill();
+        
+        // Arms
+        ctx.fillStyle = this.color;
+        ctx.fillRect(x, y+25, 10, 20);
+        
+        // Eyes
+        ctx.fillStyle = 'white';
+        ctx.fillRect(x + 18, y + 15, 6, 6);
+        ctx.fillRect(x + 26, y + 15, 6, 6);
+    }
+    update() { this.x -= 0.4; }
+}
+
+class Projectile {
+    constructor(row, x) {
+        this.row = row; this.x = x; this.y = row * CELL_SIZE + CELL_SIZE/2;
+    }
+    draw() {
+        ctx.fillStyle = '#7FFF00';
+        ctx.shadowBlur = 10; ctx.shadowColor = 'lime';
+        ctx.beginPath(); ctx.arc(this.x, this.y, 6, 0, Math.PI*2); ctx.fill();
+        ctx.shadowBlur = 0;
+    }
+    update() { this.x += 3; }
+}
+
+class Particle {
+    constructor(x, y, color) {
+        this.x = x; this.y = y;
+        this.vx = (Math.random() - 0.5) * 8;
+        this.vy = (Math.random() - 0.5) * 8;
+        this.life = 15;
+        this.color = color;
+    }
+    update() { this.x += this.vx; this.y += this.vy; this.life--; }
+    draw() { ctx.fillStyle = this.color; ctx.fillRect(this.x, this.y, 4, 4); }
+}
+
+let plants = [];
+let zombies = [];
+let projectiles = [];
+let particles = [];
+let score = 0;
+
+canvas.addEventListener('click', (e) => {
+    const rect = canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    
+    // Check if clicked in grid
+    if (y < ROWS * CELL_SIZE) {
+        const col = Math.floor(x / CELL_SIZE);
+        const row = Math.floor(y / CELL_SIZE);
+        if (row >= 0 && row < ROWS && col >= 0 && col < COLS) {
+            plants.push(new Plant(row, col));
+        }
+    }
+});
+
+function update() {
+    if (Math.random() < 0.008) zombies.push(new Zombie(Math.floor(Math.random() * ROWS)));
+    
+    plants.forEach(p => {
+        if (Date.now() - p.lastShot > 1200) {
+            projectiles.push(new Projectile(p.row, p.col * CELL_SIZE + CELL_SIZE));
+            p.lastShot = Date.now();
+        }
+    });
+
+    zombies.forEach(z => z.update());
+    projectiles.forEach(p => p.update());
+    particles.forEach(p => p.update());
+    
+    projectiles.forEach((p, pIdx) => {
+        zombies.forEach((z, zIdx) => {
+            if (p.x > z.x && p.x < z.x + 50 && p.row === z.row) {
+                z.health -= 34;
+                for(let i=0; i<8; i++) particles.push(new Particle(z.x + 25, z.row * CELL_SIZE + 40, 'orange'));
+                projectiles.splice(pIdx, 1);
+            }
+        });
+    });
+    
+    let oldZombies = zombies.length;
+    zombies = zombies.filter(z => z.health > 0 && z.x > -50);
+    score += (oldZombies - zombies.length) * 10;
+    particles = particles.filter(p => p.life > 0);
+}
+
+function draw() {
+    // Background
+    ctx.fillStyle = '#228B22';
+    ctx.fillRect(0, 0, canvas.width, ROWS * CELL_SIZE);
+    
+    // Grid
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
+    for(let i=0; i<=ROWS; i++) { ctx.beginPath(); ctx.moveTo(0, i*CELL_SIZE); ctx.lineTo(canvas.width, i*CELL_SIZE); ctx.stroke(); }
+    for(let j=0; j<=COLS; j++) { ctx.beginPath(); ctx.moveTo(j*CELL_SIZE, 0); ctx.lineTo(j*CELL_SIZE, ROWS * CELL_SIZE); ctx.stroke(); }
+
+    // Plants/Zombies/Objects
+    plants.forEach(p => p.draw());
+    zombies.forEach(z => z.draw());
+    projectiles.forEach(p => p.draw());
+    particles.forEach(p => p.draw());
+
+    // UI Panel
+    ctx.fillStyle = '#333';
+    ctx.fillRect(0, ROWS * CELL_SIZE, canvas.width, 100);
+    ctx.fillStyle = 'white';
+    ctx.font = '20px Arial';
+    ctx.fillText('Score: ' + score, 10, ROWS * CELL_SIZE + 30);
+    ctx.fillText('Click grid to plant sunflower', 10, ROWS * CELL_SIZE + 60);
+
+    update();
+    requestAnimationFrame(draw);
+}
+
+draw();

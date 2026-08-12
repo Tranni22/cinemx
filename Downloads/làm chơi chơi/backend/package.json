@@ -1,0 +1,28 @@
+{
+  "name": "ai-chat-backend",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js"
+  },
+  "dependencies": {
+    "@google/genai": "^2.11.0",
+    "better-sqlite3": "^12.11.1",
+    "cheerio": "^1.2.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "framer-motion": "^12.42.2",
+    "mammoth": "^1.12.0",
+    "multer": "^2.2.0",
+    "node-fetch": "^3.3.2",
+    "officeparser": "^7.5.1",
+    "puppeteer": "^25.3.0",
+    "socket.io": "^4.8.3",
+    "swiper": "^14.0.5",
+    "tesseract.js": "^7.0.0",
+    "xlsx": "^0.18.5"
+  }
+}

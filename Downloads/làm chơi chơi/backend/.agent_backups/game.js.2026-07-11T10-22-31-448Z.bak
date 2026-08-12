@@ -1,0 +1,145 @@
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+
+const ROWS = 5;
+const COLS = 9;
+const CELL_SIZE = 80;
+
+canvas.width = COLS * CELL_SIZE;
+canvas.height = ROWS * CELL_SIZE;
+
+class Plant {
+    constructor(row, col) {
+        this.row = row;
+        this.col = col;
+        this.health = 100;
+        this.lastShot = 0;
+    }
+    draw() {
+        const x = this.col * CELL_SIZE + CELL_SIZE/2;
+        const y = this.row * CELL_SIZE + CELL_SIZE/2;
+        
+        // Thân
+        ctx.fillStyle = '#FFD700';
+        ctx.strokeStyle = '#000';
+        ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.arc(x, y, 25, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+        
+        // Lá
+        ctx.fillStyle = 'green';
+        ctx.beginPath(); ctx.ellipse(x, y - 25, 10, 20, 0, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+    }
+}
+
+class Zombie {
+    constructor(row) {
+        this.row = row;
+        this.x = canvas.width;
+        this.health = 100;
+    }
+    draw() {
+        const x = this.x;
+        const y = this.row * CELL_SIZE + 10;
+        
+        // Thân
+        ctx.fillStyle = '#8B4513';
+        ctx.strokeStyle = '#000';
+        ctx.fillRect(x, y, 50, 60);
+        ctx.strokeRect(x, y, 50, 60);
+        
+        // Mắt
+        ctx.fillStyle = 'white';
+        ctx.fillRect(x + 10, y + 20, 10, 10);
+        ctx.fillRect(x + 30, y + 20, 10, 10);
+    }
+    update() {
+        this.x -= 0.3;
+    }
+}
+
+class Projectile {
+    constructor(row, x) {
+        this.row = row;
+        this.x = x;
+        this.y = row * CELL_SIZE + CELL_SIZE/2;
+    }
+    draw() {
+        ctx.fillStyle = '#32CD32';
+        ctx.beginPath(); ctx.arc(this.x, this.y, 8, 0, Math.PI*2); ctx.fill();
+    }
+    update() {
+        this.x += 2;
+    }
+}
+
+class Particle {
+    constructor(x, y) {
+        this.x = x; this.y = y;
+        this.vx = (Math.random() - 0.5) * 4;
+        this.vy = (Math.random() - 0.5) * 4;
+        this.life = 20;
+    }
+    update() { this.x += this.vx; this.y += this.vy; this.life--; }
+    draw() { ctx.fillStyle = 'red'; ctx.fillRect(this.x, this.y, 4, 4); }
+}
+
+let plants = [];
+let zombies = [];
+let projectiles = [];
+let particles = [];
+
+canvas.addEventListener('click', (e) => {
+    const rect = canvas.getBoundingClientRect();
+    const col = Math.floor((e.clientX - rect.left) / CELL_SIZE);
+    const row = Math.floor((e.clientY - rect.top) / CELL_SIZE);
+    if (row >= 0 && row < ROWS && col >= 0 && col < COLS) {
+        plants.push(new Plant(row, col));
+    }
+});
+
+function update() {
+    if (Math.random() < 0.005) zombies.push(new Zombie(Math.floor(Math.random() * ROWS)));
+    
+    plants.forEach(p => {
+        if (Date.now() - p.lastShot > 1500) {
+            projectiles.push(new Projectile(p.row, p.col * CELL_SIZE + CELL_SIZE));
+            p.lastShot = Date.now();
+        }
+    });
+
+    zombies.forEach(z => z.update());
+    projectiles.forEach(p => p.update());
+    particles.forEach(p => p.update());
+    
+    projectiles.forEach((p, pIdx) => {
+        zombies.forEach((z, zIdx) => {
+            if (p.x > z.x && p.x < z.x + 50 && p.row === z.row) {
+                z.health -= 34;
+                for(let i=0; i<5; i++) particles.push(new Particle(z.x + 25, z.row * CELL_SIZE + 40));
+                projectiles.splice(pIdx, 1);
+            }
+        });
+    });
+    
+    zombies = zombies.filter(z => z.health > 0 && z.x > -50);
+    particles = particles.filter(p => p.life > 0);
+}
+
+function draw() {
+    ctx.fillStyle = '#228B22';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+    for(let i=0; i<=ROWS; i++) { ctx.beginPath(); ctx.moveTo(0, i*CELL_SIZE); ctx.lineTo(canvas.width, i*CELL_SIZE); ctx.stroke(); }
+    for(let j=0; j<=COLS; j++) { ctx.beginPath(); ctx.moveTo(j*CELL_SIZE, 0); ctx.lineTo(j*CELL_SIZE, canvas.height); ctx.stroke(); }
+
+    plants.forEach(p => p.draw());
+    zombies.forEach(z => z.draw());
+    projectiles.forEach(p => p.draw());
+    particles.forEach(p => p.draw());
+
+    update();
+    requestAnimationFrame(draw);
+}
+
+draw();

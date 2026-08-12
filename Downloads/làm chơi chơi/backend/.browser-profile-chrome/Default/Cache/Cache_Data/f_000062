@@ -1,0 +1,314 @@
+import { createHotContext as __vite__createHotContext } from "/@vite/client";import.meta.hot = __vite__createHotContext("/src/components/LoginModal.jsx");import __vite__cjsImport0_react_jsxDevRuntime from "/node_modules/.vite/deps/react_jsx-dev-runtime.js?v=40bcafeb"; const Fragment = __vite__cjsImport0_react_jsxDevRuntime["Fragment"]; const jsxDEV = __vite__cjsImport0_react_jsxDevRuntime["jsxDEV"];
+import * as RefreshRuntime from "/@react-refresh";
+const inWebWorker = typeof WorkerGlobalScope !== "undefined" && self instanceof WorkerGlobalScope;
+let prevRefreshReg;
+let prevRefreshSig;
+if (import.meta.hot && !inWebWorker) {
+  if (!window.$RefreshReg$) {
+    throw new Error(
+      "@vitejs/plugin-react can't detect preamble. Something is wrong."
+    );
+  }
+  prevRefreshReg = window.$RefreshReg$;
+  prevRefreshSig = window.$RefreshSig$;
+  window.$RefreshReg$ = RefreshRuntime.getRefreshReg("C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/LoginModal.jsx");
+  window.$RefreshSig$ = RefreshRuntime.createSignatureFunctionForTransform;
+}
+var _s = $RefreshSig$();
+import __vite__cjsImport3_react from "/node_modules/.vite/deps/react.js?v=40bcafeb"; const React = __vite__cjsImport3_react.__esModule ? __vite__cjsImport3_react.default : __vite__cjsImport3_react; const useState = __vite__cjsImport3_react["useState"];
+import { useAuth } from "/src/context/AuthContext.jsx";
+import { Coffee, Lock, User, ShieldCheck, UserCheck, AlertCircle } from "/node_modules/.vite/deps/lucide-react.js?v=40bcafeb";
+export default function LoginModal() {
+  _s();
+  const { login, loading } = useAuth();
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setError("");
+    const res = await login(username, password);
+    if (!res.success) {
+      setError(res.message);
+    }
+  };
+  const fillQuickAccount = (user, pass) => {
+    setUsername(user);
+    setPassword(pass);
+    setError("");
+  };
+  return /* @__PURE__ */ jsxDEV("div", { className: "fixed inset-0 z-50 flex items-center justify-center bg-gray-900/80 backdrop-blur-sm p-4", children: /* @__PURE__ */ jsxDEV("div", { className: "w-full max-w-md bg-white rounded-2xl shadow-2xl overflow-hidden border border-gray-100 transform transition-all", children: [
+    /* @__PURE__ */ jsxDEV("div", { className: "bg-gradient-to-r from-coffee-800 to-coffee-600 p-8 text-white text-center relative overflow-hidden", children: [
+      /* @__PURE__ */ jsxDEV("div", { className: "absolute -right-6 -bottom-6 w-32 h-32 bg-white/10 rounded-full blur-xl pointer-events-none" }, void 0, false, {
+        fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/LoginModal.jsx",
+        lineNumber: 50,
+        columnNumber: 11
+      }, this),
+      /* @__PURE__ */ jsxDEV("div", { className: "inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-white/15 backdrop-blur-md mb-3 border border-white/20 shadow-inner", children: /* @__PURE__ */ jsxDEV(Coffee, { className: "w-9 h-9 text-amber-200" }, void 0, false, {
+        fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/LoginModal.jsx",
+        lineNumber: 52,
+        columnNumber: 13
+      }, this) }, void 0, false, {
+        fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/LoginModal.jsx",
+        lineNumber: 51,
+        columnNumber: 11
+      }, this),
+      /* @__PURE__ */ jsxDEV("h1", { className: "text-2xl font-bold tracking-tight", children: "COFFEE POS SYSTEM" }, void 0, false, {
+        fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/LoginModal.jsx",
+        lineNumber: 54,
+        columnNumber: 11
+      }, this),
+      /* @__PURE__ */ jsxDEV("p", { className: "text-coffee-100 text-sm mt-1", children: "Phần mềm Quản lý Quán Cà Phê Professional" }, void 0, false, {
+        fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/LoginModal.jsx",
+        lineNumber: 55,
+        columnNumber: 11
+      }, this)
+    ] }, void 0, true, {
+      fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/LoginModal.jsx",
+      lineNumber: 49,
+      columnNumber: 9
+    }, this),
+    /* @__PURE__ */ jsxDEV("div", { className: "p-8", children: [
+      error && /* @__PURE__ */ jsxDEV("div", { className: "mb-5 p-3.5 bg-red-50 border border-red-200 rounded-xl text-red-600 text-sm flex items-center gap-2 animate-shake", children: [
+        /* @__PURE__ */ jsxDEV(AlertCircle, { className: "w-5 h-5 flex-shrink-0" }, void 0, false, {
+          fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/LoginModal.jsx",
+          lineNumber: 62,
+          columnNumber: 15
+        }, this),
+        /* @__PURE__ */ jsxDEV("span", { children: error }, void 0, false, {
+          fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/LoginModal.jsx",
+          lineNumber: 63,
+          columnNumber: 15
+        }, this)
+      ] }, void 0, true, {
+        fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/LoginModal.jsx",
+        lineNumber: 61,
+        columnNumber: 11
+      }, this),
+      /* @__PURE__ */ jsxDEV("form", { onSubmit: handleSubmit, className: "space-y-4", children: [
+        /* @__PURE__ */ jsxDEV("div", { children: [
+          /* @__PURE__ */ jsxDEV("label", { className: "block text-xs font-semibold text-gray-600 uppercase mb-1.5", children: "Tên đăng nhập" }, void 0, false, {
+            fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/LoginModal.jsx",
+            lineNumber: 69,
+            columnNumber: 15
+          }, this),
+          /* @__PURE__ */ jsxDEV("div", { className: "relative", children: [
+            /* @__PURE__ */ jsxDEV(User, { className: "absolute left-3.5 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" }, void 0, false, {
+              fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/LoginModal.jsx",
+              lineNumber: 73,
+              columnNumber: 17
+            }, this),
+            /* @__PURE__ */ jsxDEV(
+              "input",
+              {
+                type: "text",
+                required: true,
+                value: username,
+                onChange: (e) => setUsername(e.target.value),
+                placeholder: "Nhập username (vd: admin, staff1)",
+                className: "w-full pl-11 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:bg-white focus:border-coffee-600 focus:ring-2 focus:ring-coffee-600/20 outline-none transition text-sm"
+              },
+              void 0,
+              false,
+              {
+                fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/LoginModal.jsx",
+                lineNumber: 74,
+                columnNumber: 17
+              },
+              this
+            )
+          ] }, void 0, true, {
+            fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/LoginModal.jsx",
+            lineNumber: 72,
+            columnNumber: 15
+          }, this)
+        ] }, void 0, true, {
+          fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/LoginModal.jsx",
+          lineNumber: 68,
+          columnNumber: 13
+        }, this),
+        /* @__PURE__ */ jsxDEV("div", { children: [
+          /* @__PURE__ */ jsxDEV("label", { className: "block text-xs font-semibold text-gray-600 uppercase mb-1.5", children: "Mật khẩu" }, void 0, false, {
+            fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/LoginModal.jsx",
+            lineNumber: 86,
+            columnNumber: 15
+          }, this),
+          /* @__PURE__ */ jsxDEV("div", { className: "relative", children: [
+            /* @__PURE__ */ jsxDEV(Lock, { className: "absolute left-3.5 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" }, void 0, false, {
+              fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/LoginModal.jsx",
+              lineNumber: 90,
+              columnNumber: 17
+            }, this),
+            /* @__PURE__ */ jsxDEV(
+              "input",
+              {
+                type: "password",
+                required: true,
+                value: password,
+                onChange: (e) => setPassword(e.target.value),
+                placeholder: "Nhập mật khẩu",
+                className: "w-full pl-11 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:bg-white focus:border-coffee-600 focus:ring-2 focus:ring-coffee-600/20 outline-none transition text-sm"
+              },
+              void 0,
+              false,
+              {
+                fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/LoginModal.jsx",
+                lineNumber: 91,
+                columnNumber: 17
+              },
+              this
+            )
+          ] }, void 0, true, {
+            fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/LoginModal.jsx",
+            lineNumber: 89,
+            columnNumber: 15
+          }, this)
+        ] }, void 0, true, {
+          fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/LoginModal.jsx",
+          lineNumber: 85,
+          columnNumber: 13
+        }, this),
+        /* @__PURE__ */ jsxDEV(
+          "button",
+          {
+            type: "submit",
+            disabled: loading,
+            className: "w-full py-3.5 bg-coffee-700 hover:bg-coffee-800 active:bg-coffee-900 text-white font-semibold rounded-xl shadow-lg shadow-coffee-700/20 transition duration-150 disabled:opacity-50 flex items-center justify-center gap-2",
+            children: loading ? /* @__PURE__ */ jsxDEV("span", { children: "Đang xác thực..." }, void 0, false, {
+              fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/LoginModal.jsx",
+              lineNumber: 108,
+              columnNumber: 15
+            }, this) : /* @__PURE__ */ jsxDEV(Fragment, { children: /* @__PURE__ */ jsxDEV("span", { children: "Đăng nhập hệ thống" }, void 0, false, {
+              fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/LoginModal.jsx",
+              lineNumber: 111,
+              columnNumber: 19
+            }, this) }, void 0, false, {
+              fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/LoginModal.jsx",
+              lineNumber: 110,
+              columnNumber: 15
+            }, this)
+          },
+          void 0,
+          false,
+          {
+            fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/LoginModal.jsx",
+            lineNumber: 102,
+            columnNumber: 13
+          },
+          this
+        )
+      ] }, void 0, true, {
+        fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/LoginModal.jsx",
+        lineNumber: 67,
+        columnNumber: 11
+      }, this),
+      /* @__PURE__ */ jsxDEV("div", { className: "mt-8 pt-6 border-t border-gray-100", children: [
+        /* @__PURE__ */ jsxDEV("p", { className: "text-xs text-center font-medium text-gray-500 mb-3 uppercase tracking-wider", children: "⚡ Đăng nhập nhanh tài khoản mẫu" }, void 0, false, {
+          fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/LoginModal.jsx",
+          lineNumber: 119,
+          columnNumber: 13
+        }, this),
+        /* @__PURE__ */ jsxDEV("div", { className: "grid grid-cols-2 gap-2.5", children: [
+          /* @__PURE__ */ jsxDEV(
+            "button",
+            {
+              type: "button",
+              onClick: () => fillQuickAccount("admin", "admin123"),
+              className: "p-2.5 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 rounded-xl text-xs font-medium flex items-center justify-center gap-1.5 transition",
+              children: [
+                /* @__PURE__ */ jsxDEV(ShieldCheck, { className: "w-4 h-4 text-amber-600" }, void 0, false, {
+                  fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/LoginModal.jsx",
+                  lineNumber: 128,
+                  columnNumber: 17
+                }, this),
+                /* @__PURE__ */ jsxDEV("span", { children: "Quản Lý (Admin)" }, void 0, false, {
+                  fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/LoginModal.jsx",
+                  lineNumber: 129,
+                  columnNumber: 17
+                }, this)
+              ]
+            },
+            void 0,
+            true,
+            {
+              fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/LoginModal.jsx",
+              lineNumber: 123,
+              columnNumber: 15
+            },
+            this
+          ),
+          /* @__PURE__ */ jsxDEV(
+            "button",
+            {
+              type: "button",
+              onClick: () => fillQuickAccount("staff1", "staff123"),
+              className: "p-2.5 bg-blue-50 hover:bg-blue-100 text-blue-900 border border-blue-200 rounded-xl text-xs font-medium flex items-center justify-center gap-1.5 transition",
+              children: [
+                /* @__PURE__ */ jsxDEV(UserCheck, { className: "w-4 h-4 text-blue-600" }, void 0, false, {
+                  fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/LoginModal.jsx",
+                  lineNumber: 137,
+                  columnNumber: 17
+                }, this),
+                /* @__PURE__ */ jsxDEV("span", { children: "Nhân Viên Order" }, void 0, false, {
+                  fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/LoginModal.jsx",
+                  lineNumber: 138,
+                  columnNumber: 17
+                }, this)
+              ]
+            },
+            void 0,
+            true,
+            {
+              fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/LoginModal.jsx",
+              lineNumber: 132,
+              columnNumber: 15
+            },
+            this
+          )
+        ] }, void 0, true, {
+          fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/LoginModal.jsx",
+          lineNumber: 122,
+          columnNumber: 13
+        }, this)
+      ] }, void 0, true, {
+        fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/LoginModal.jsx",
+        lineNumber: 118,
+        columnNumber: 11
+      }, this)
+    ] }, void 0, true, {
+      fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/LoginModal.jsx",
+      lineNumber: 59,
+      columnNumber: 9
+    }, this)
+  ] }, void 0, true, {
+    fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/LoginModal.jsx",
+    lineNumber: 47,
+    columnNumber: 7
+  }, this) }, void 0, false, {
+    fileName: "C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/LoginModal.jsx",
+    lineNumber: 46,
+    columnNumber: 5
+  }, this);
+}
+_s(LoginModal, "qw85SdNPjHHofe0XB3lgzRiYRdI=", false, function() {
+  return [useAuth];
+});
+_c = LoginModal;
+var _c;
+$RefreshReg$(_c, "LoginModal");
+if (import.meta.hot && !inWebWorker) {
+  window.$RefreshReg$ = prevRefreshReg;
+  window.$RefreshSig$ = prevRefreshSig;
+}
+if (import.meta.hot && !inWebWorker) {
+  RefreshRuntime.__hmr_import(import.meta.url).then((currentExports) => {
+    RefreshRuntime.registerExportsForReactRefresh("C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/LoginModal.jsx", currentExports);
+    import.meta.hot.accept((nextExports) => {
+      if (!nextExports) return;
+      const invalidateMessage = RefreshRuntime.validateRefreshBoundaryAndEnqueueUpdate("C:/Users/Lenovo/Downloads/thu muc lam viec agent/frontend/src/components/LoginModal.jsx", currentExports, nextExports);
+      if (invalidateMessage) import.meta.hot.invalidate(invalidateMessage);
+    });
+  });
+}
+
+//# sourceMappingURL=data:application/json;base64,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TWEsaUJBQWlCLFNBQVMsVUFBVTtBQUFBLGNBQ25ELFdBQVU7QUFBQSxjQUVWO0FBQUEsdUNBQUMsZUFBWSxXQUFVLDRCQUF2QjtBQUFBO0FBQUE7QUFBQTtBQUFBLHVCQUErQztBQUFBLGdCQUMvQyx1QkFBQyxVQUFLLCtCQUFOO0FBQUE7QUFBQTtBQUFBO0FBQUEsdUJBQXFCO0FBQUE7QUFBQTtBQUFBLFlBTnZCO0FBQUE7QUFBQTtBQUFBO0FBQUE7QUFBQTtBQUFBO0FBQUE7QUFBQSxVQU9BO0FBQUEsVUFFQTtBQUFBLFlBQUM7QUFBQTtBQUFBLGNBQ0MsTUFBSztBQUFBLGNBQ0wsU0FBUyxNQUFNQSxpQkFBaUIsVUFBVSxVQUFVO0FBQUEsY0FDcEQsV0FBVTtBQUFBLGNBRVY7QUFBQSx1Q0FBQyxhQUFVLFdBQVUsMkJBQXJCO0FBQUE7QUFBQTtBQUFBO0FBQUEsdUJBQTRDO0FBQUEsZ0JBQzVDLHVCQUFDLFVBQUssK0JBQU47QUFBQTtBQUFBO0FBQUE7QUFBQSx1QkFBcUI7QUFBQTtBQUFBO0FBQUEsWUFOdkI7QUFBQTtBQUFBO0FBQUE7QUFBQTtBQUFBO0FBQUE7QUFBQTtBQUFBLFVBT0E7QUFBQSxhQWpCRjtBQUFBO0FBQUE7QUFBQTtBQUFBLGVBa0JBO0FBQUEsV0F0QkY7QUFBQTtBQUFBO0FBQUE7QUFBQSxhQXVCQTtBQUFBLFNBbEZGO0FBQUE7QUFBQTtBQUFBO0FBQUEsV0FtRkE7QUFBQSxPQS9GRjtBQUFBO0FBQUE7QUFBQTtBQUFBLFNBZ0dBLEtBakdGO0FBQUE7QUFBQTtBQUFBO0FBQUEsU0FrR0E7QUFFSjtBQUFDZixHQTFIdUJELFlBQVU7QUFBQSxVQUNMUCxPQUFPO0FBQUE7QUFBQSxLQURaTztBQUFVLElBQUFxQjtBQUFBLGFBQUFBLElBQUEiLCJuYW1lcyI6WyJSZWFjdCIsInVzZVN0YXRlIiwidXNlQXV0aCIsIkNvZmZlZSIsIkxvY2siLCJVc2VyIiwiU2hpZWxkQ2hlY2siLCJVc2VyQ2hlY2siLCJBbGVydENpcmNsZSIsIkxvZ2luTW9kYWwiLCJfcyIsImxvZ2luIiwibG9hZGluZyIsInVzZXJuYW1lIiwic2V0VXNlcm5hbWUiLCJwYXNzd29yZCIsInNldFBhc3N3b3JkIiwiZXJyb3IiLCJzZXRFcnJvciIsImhhbmRsZVN1Ym1pdCIsImUiLCJwcmV2ZW50RGVmYXVsdCIsInJlcyIsInN1Y2Nlc3MiLCJtZXNzYWdlIiwiZmlsbFF1aWNrQWNjb3VudCIsInVzZXIiLCJwYXNzIiwidGFyZ2V0IiwidmFsdWUiLCJfYyJdLCJpZ25vcmVMaXN0IjpbXSwic291cmNlcyI6WyJMb2dpbk1vZGFsLmpzeCJdLCJzb3VyY2VzQ29udGVudCI6WyJpbXBvcnQgUmVhY3QsIHsgdXNlU3RhdGUgfSBmcm9tICdyZWFjdCc7XG5pbXBvcnQgeyB1c2VBdXRoIH0gZnJvbSAnLi4vY29udGV4dC9BdXRoQ29udGV4dCc7XG5pbXBvcnQgeyBDb2ZmZWUsIExvY2ssIFVzZXIsIFNoaWVsZENoZWNrLCBVc2VyQ2hlY2ssIEFsZXJ0Q2lyY2xlIH0gZnJvbSAnbHVjaWRlLXJlYWN0JztcblxuZXhwb3J0IGRlZmF1bHQgZnVuY3Rpb24gTG9naW5Nb2RhbCgpIHtcbiAgY29uc3QgeyBsb2dpbiwgbG9hZGluZyB9ID0gdXNlQXV0aCgpO1xuICBjb25zdCBbdXNlcm5hbWUsIHNldFVzZXJuYW1lXSA9IHVzZVN0YXRlKCcnKTtcbiAgY29uc3QgW3Bhc3N3b3JkLCBzZXRQYXNzd29yZF0gPSB1c2VTdGF0ZSgnJyk7XG4gIGNvbnN0IFtlcnJvciwgc2V0RXJyb3JdID0gdXNlU3RhdGUoJycpO1xuXG4gIGNvbnN0IGhhbmRsZVN1Ym1pdCA9IGFzeW5jIChlKSA9PiB7XG4gICAgZS5wcmV2ZW50RGVmYXVsdCgpO1xuICAgIHNldEVycm9yKCcnKTtcbiAgICBjb25zdCByZXMgPSBhd2FpdCBsb2dpbih1c2VybmFtZSwgcGFzc3dvcmQpO1xuICAgIGlmICghcmVzLnN1Y2Nlc3MpIHtcbiAgICAgIHNldEVycm9yKHJlcy5tZXNzYWdlKTtcbiAgICB9XG4gIH07XG5cbiAgY29uc3QgZmlsbFF1aWNrQWNjb3VudCA9ICh1c2VyLCBwYXNzKSA9PiB7XG4gICAgc2V0VXNlcm5hbWUodXNlcik7XG4gICAgc2V0UGFzc3dvcmQocGFzcyk7XG4gICAgc2V0RXJyb3IoJycpO1xuICB9O1xuXG4gIHJldHVybiAoXG4gICAgPGRpdiBjbGFzc05hbWU9XCJmaXhlZCBpbnNldC0wIHotNTAgZmxleCBpdGVtcy1jZW50ZXIganVzdGlmeS1jZW50ZXIgYmctZ3JheS05MDAvODAgYmFja2Ryb3AtYmx1ci1zbSBwLTRcIj5cbiAgICAgIDxkaXYgY2xhc3NOYW1lPVwidy1mdWxsIG1heC13LW1kIGJnLXdoaXRlIHJvdW5kZWQtMnhsIHNoYWRvdy0yeGwgb3ZlcmZsb3ctaGlkZGVuIGJvcmRlciBib3JkZXItZ3JheS0xMDAgdHJhbnNmb3JtIHRyYW5zaXRpb24tYWxsXCI+XG4gICAgICAgIHsvKiBIZWFkZXIgQmFubmVyICovfVxuICAgICAgICA8ZGl2IGNsYXNzTmFtZT1cImJnLWdyYWRpZW50LXRvLXIgZnJvbS1jb2ZmZWUtODAwIHRvLWNvZmZlZS02MDAgcC04IHRleHQtd2hpdGUgdGV4dC1jZW50ZXIgcmVsYXRpdmUgb3ZlcmZsb3ctaGlkZGVuXCI+XG4gICAgICAgICAgPGRpdiBjbGFzc05hbWU9XCJhYnNvbHV0ZSAtcmlnaHQtNiAtYm90dG9tLTYgdy0zMiBoLTMyIGJnLXdoaXRlLzEwIHJvdW5kZWQtZnVsbCBibHVyLXhsIHBvaW50ZXItZXZlbnRzLW5vbmVcIj48L2Rpdj5cbiAgICAgICAgICA8ZGl2IGNsYXNzTmFtZT1cImlubGluZS1mbGV4IGl0ZW1zLWNlbnRlciBqdXN0aWZ5LWNlbnRlciB3LTE2IGgtMTYgcm91bmRlZC0yeGwgYmctd2hpdGUvMTUgYmFja2Ryb3AtYmx1ci1tZCBtYi0zIGJvcmRlciBib3JkZXItd2hpdGUvMjAgc2hhZG93LWlubmVyXCI+XG4gICAgICAgICAgICA8Q29mZmVlIGNsYXNzTmFtZT1cInctOSBoLTkgdGV4dC1hbWJlci0yMDBcIiAvPlxuICAgICAgICAgIDwvZGl2PlxuICAgICAgICAgIDxoMSBjbGFzc05hbWU9XCJ0ZXh0LTJ4bCBmb250LWJvbGQgdHJhY2tpbmctdGlnaHRcIj5DT0ZGRUUgUE9TIFNZU1RFTTwvaDE+XG4gICAgICAgICAgPHAgY2xhc3NOYW1lPVwidGV4dC1jb2ZmZWUtMTAwIHRleHQtc20gbXQtMVwiPlBo4bqnbiBt4buBbSBRdeG6o24gbMO9IFF1w6FuIEPDoCBQaMOqIFByb2Zlc3Npb25hbDwvcD5cbiAgICAgICAgPC9kaXY+XG5cbiAgICAgICAgey8qIExvZ2luIEZvcm0gKi99XG4gICAgICAgIDxkaXYgY2xhc3NOYW1lPVwicC04XCI+XG4gICAgICAgICAge2Vycm9yICYmIChcbiAgICAgICAgICAgIDxkaXYgY2xhc3NOYW1lPVwibWItNSBwLTMuNSBiZy1yZWQtNTAgYm9yZGVyIGJvcmRlci1yZWQtMjAwIHJvdW5kZWQteGwgdGV4dC1yZWQtNjAwIHRleHQtc20gZmxleCBpdGVtcy1jZW50ZXIgZ2FwLTIgYW5pbWF0ZS1zaGFrZVwiPlxuICAgICAgICAgICAgICA8QWxlcnRDaXJjbGUgY2xhc3NOYW1lPVwidy01IGgtNSBmbGV4LXNocmluay0wXCIgLz5cbiAgICAgICAgICAgICAgPHNwYW4+e2Vycm9yfTwvc3Bhbj5cbiAgICAgICAgICAgIDwvZGl2PlxuICAgICAgICAgICl9XG5cbiAgICAgICAgICA8Zm9ybSBvblN1Ym1pdD17aGFuZGxlU3VibWl0fSBjbGFzc05hbWU9XCJzcGFjZS15LTRcIj5cbiAgICAgICAgICAgIDxkaXY+XG4gICAgICAgICAgICAgIDxsYWJlbCBjbGFzc05hbWU9XCJibG9jayB0ZXh0LXhzIGZvbnQtc2VtaWJvbGQgdGV4dC1ncmF5LTYwMCB1cHBlcmNhc2UgbWItMS41XCI+XG4gICAgICAgICAgICAgICAgVMOqbiDEkcSDbmcgbmjhuq1wXG4gICAgICAgICAgICAgIDwvbGFiZWw+XG4gICAgICAgICAgICAgIDxkaXYgY2xhc3NOYW1lPVwicmVsYXRpdmVcIj5cbiAgICAgICAgICAgICAgICA8VXNlciBjbGFzc05hbWU9XCJhYnNvbHV0ZSBsZWZ0LTMuNSB0b3AtMS8yIC10cmFuc2xhdGUteS0xLzIgdy01IGgtNSB0ZXh0LWdyYXktNDAwXCIgLz5cbiAgICAgICAgICAgICAgICA8aW5wdXRcbiAgICAgICAgICAgICAgICAgIHR5cGU9XCJ0ZXh0XCJcbiAgICAgICAgICAgICAgICAgIHJlcXVpcmVkXG4gICAgICAgICAgICAgICAgICB2YWx1ZT17dXNlcm5hbWV9XG4gICAgICAgICAgICAgICAgICBvbkNoYW5nZT17KGUpID0+IHNldFVzZXJuYW1lKGUudGFyZ2V0LnZhbHVlKX1cbiAgICAgICAgICAgICAgICAgIHBsYWNlaG9sZGVyPVwiTmjhuq1wIHVzZXJuYW1lICh2ZDogYWRtaW4sIHN0YWZmMSlcIlxuICAgICAgICAgICAgICAgICAgY2xhc3NOYW1lPVwidy1mdWxsIHBsLTExIHByLTQgcHktMyBiZy1ncmF5LTUwIGJvcmRlciBib3JkZXItZ3JheS0yMDAgcm91bmRlZC14bCBmb2N1czpiZy13aGl0ZSBmb2N1czpib3JkZXItY29mZmVlLTYwMCBmb2N1czpyaW5nLTIgZm9jdXM6cmluZy1jb2ZmZWUtNjAwLzIwIG91dGxpbmUtbm9uZSB0cmFuc2l0aW9uIHRleHQtc21cIlxuICAgICAgICAgICAgICAgIC8+XG4gICAgICAgICAgICAgIDwvZGl2PlxuICAgICAgICAgICAgPC9kaXY+XG5cbiAgICAgICAgICAgIDxkaXY+XG4gICAgICAgICAgICAgIDxsYWJlbCBjbGFzc05hbWU9XCJibG9jayB0ZXh0LXhzIGZvbnQtc2VtaWJvbGQgdGV4dC1ncmF5LTYwMCB1cHBlcmNhc2UgbWItMS41XCI+XG4gICAgICAgICAgICAgICAgTeG6rXQga2jhuql1XG4gICAgICAgICAgICAgIDwvbGFiZWw+XG4gICAgICAgICAgICAgIDxkaXYgY2xhc3NOYW1lPVwicmVsYXRpdmVcIj5cbiAgICAgICAgICAgICAgICA8TG9jayBjbGFzc05hbWU9XCJhYnNvbHV0ZSBsZWZ0LTMuNSB0b3AtMS8yIC10cmFuc2xhdGUteS0xLzIgdy01IGgtNSB0ZXh0LWdyYXktNDAwXCIgLz5cbiAgICAgICAgICAgICAgICA8aW5wdXRcbiAgICAgICAgICAgICAgICAgIHR5cGU9XCJwYXNzd29yZFwiXG4gICAgICAgICAgICAgICAgICByZXF1aXJlZFxuICAgICAgICAgICAgICAgICAgdmFsdWU9e3Bhc3N3b3JkfVxuICAgICAgICAgICAgICAgICAgb25DaGFuZ2U9eyhlKSA9PiBzZXRQYXNzd29yZChlLnRhcmdldC52YWx1ZSl9XG4gICAgICAgICAgICAgICAgICBwbGFjZWhvbGRlcj1cIk5o4bqtcCBt4bqtdCBraOG6qXVcIlxuICAgICAgICAgICAgICAgICAgY2xhc3NOYW1lPVwidy1mdWxsIHBsLTExIHByLTQgcHktMyBiZy1ncmF5LTUwIGJvcmRlciBib3JkZXItZ3JheS0yMDAgcm91bmRlZC14bCBmb2N1czpiZy13aGl0ZSBmb2N1czpib3JkZXItY29mZmVlLTYwMCBmb2N1czpyaW5nLTIgZm9jdXM6cmluZy1jb2ZmZWUtNjAwLzIwIG91dGxpbmUtbm9uZSB0cmFuc2l0aW9uIHRleHQtc21cIlxuICAgICAgICAgICAgICAgIC8+XG4gICAgICAgICAgICAgIDwvZGl2PlxuICAgICAgICAgICAgPC9kaXY+XG5cbiAgICAgICAgICAgIDxidXR0b25cbiAgICAgICAgICAgICAgdHlwZT1cInN1Ym1pdFwiXG4gICAgICAgICAgICAgIGRpc2FibGVkPXtsb2FkaW5nfVxuICAgICAgICAgICAgICBjbGFzc05hbWU9XCJ3LWZ1bGwgcHktMy41IGJnLWNvZmZlZS03MDAgaG92ZXI6YmctY29mZmVlLTgwMCBhY3RpdmU6YmctY29mZmVlLTkwMCB0ZXh0LXdoaXRlIGZvbnQtc2VtaWJvbGQgcm91bmRlZC14bCBzaGFkb3ctbGcgc2hhZG93LWNvZmZlZS03MDAvMjAgdHJhbnNpdGlvbiBkdXJhdGlvbi0xNTAgZGlzYWJsZWQ6b3BhY2l0eS01MCBmbGV4IGl0ZW1zLWNlbnRlciBqdXN0aWZ5LWNlbnRlciBnYXAtMlwiXG4gICAgICAgICAgICA+XG4gICAgICAgICAgICAgIHtsb2FkaW5nID8gKFxuICAgICAgICAgICAgICAgIDxzcGFuPsSQYW5nIHjDoWMgdGjhu7FjLi4uPC9zcGFuPlxuICAgICAgICAgICAgICApIDogKFxuICAgICAgICAgICAgICAgIDw+XG4gICAgICAgICAgICAgICAgICA8c3Bhbj7EkMSDbmcgbmjhuq1wIGjhu4cgdGjhu5FuZzwvc3Bhbj5cbiAgICAgICAgICAgICAgICA8Lz5cbiAgICAgICAgICAgICAgKX1cbiAgICAgICAgICAgIDwvYnV0dG9uPlxuICAgICAgICAgIDwvZm9ybT5cblxuICAgICAgICAgIHsvKiBDaOG7jW4gbmhhbmggdMOgaSBraG/huqNuIG3huqt1ICovfVxuICAgICAgICAgIDxkaXYgY2xhc3NOYW1lPVwibXQtOCBwdC02IGJvcmRlci10IGJvcmRlci1ncmF5LTEwMFwiPlxuICAgICAgICAgICAgPHAgY2xhc3NOYW1lPVwidGV4dC14cyB0ZXh0LWNlbnRlciBmb250LW1lZGl1bSB0ZXh0LWdyYXktNTAwIG1iLTMgdXBwZXJjYXNlIHRyYWNraW5nLXdpZGVyXCI+XG4gICAgICAgICAgICAgIOKaoSDEkMSDbmcgbmjhuq1wIG5oYW5oIHTDoGkga2hv4bqjbiBt4bqrdVxuICAgICAgICAgICAgPC9wPlxuICAgICAgICAgICAgPGRpdiBjbGFzc05hbWU9XCJncmlkIGdyaWQtY29scy0yIGdhcC0yLjVcIj5cbiAgICAgICAgICAgICAgPGJ1dHRvblxuICAgICAgICAgICAgICAgIHR5cGU9XCJidXR0b25cIlxuICAgICAgICAgICAgICAgIG9uQ2xpY2s9eygpID0+IGZpbGxRdWlja0FjY291bnQoJ2FkbWluJywgJ2FkbWluMTIzJyl9XG4gICAgICAgICAgICAgICAgY2xhc3NOYW1lPVwicC0yLjUgYmctYW1iZXItNTAgaG92ZXI6YmctYW1iZXItMTAwIHRleHQtYW1iZXItOTAwIGJvcmRlciBib3JkZXItYW1iZXItMjAwIHJvdW5kZWQteGwgdGV4dC14cyBmb250LW1lZGl1bSBmbGV4IGl0ZW1zLWNlbnRlciBqdXN0aWZ5LWNlbnRlciBnYXAtMS41IHRyYW5zaXRpb25cIlxuICAgICAgICAgICAgICA+XG4gICAgICAgICAgICAgICAgPFNoaWVsZENoZWNrIGNsYXNzTmFtZT1cInctNCBoLTQgdGV4dC1hbWJlci02MDBcIiAvPlxuICAgICAgICAgICAgICAgIDxzcGFuPlF14bqjbiBMw70gKEFkbWluKTwvc3Bhbj5cbiAgICAgICAgICAgICAgPC9idXR0b24+XG5cbiAgICAgICAgICAgICAgPGJ1dHRvblxuICAgICAgICAgICAgICAgIHR5cGU9XCJidXR0b25cIlxuICAgICAgICAgICAgICAgIG9uQ2xpY2s9eygpID0+IGZpbGxRdWlja0FjY291bnQoJ3N0YWZmMScsICdzdGFmZjEyMycpfVxuICAgICAgICAgICAgICAgIGNsYXNzTmFtZT1cInAtMi41IGJnLWJsdWUtNTAgaG92ZXI6YmctYmx1ZS0xMDAgdGV4dC1ibHVlLTkwMCBib3JkZXIgYm9yZGVyLWJsdWUtMjAwIHJvdW5kZWQteGwgdGV4dC14cyBmb250LW1lZGl1bSBmbGV4IGl0ZW1zLWNlbnRlciBqdXN0aWZ5LWNlbnRlciBnYXAtMS41IHRyYW5zaXRpb25cIlxuICAgICAgICAgICAgICA+XG4gICAgICAgICAgICAgICAgPFVzZXJDaGVjayBjbGFzc05hbWU9XCJ3LTQgaC00IHRleHQtYmx1ZS02MDBcIiAvPlxuICAgICAgICAgICAgICAgIDxzcGFuPk5ow6JuIFZpw6puIE9yZGVyPC9zcGFuPlxuICAgICAgICAgICAgICA8L2J1dHRvbj5cbiAgICAgICAgICAgIDwvZGl2PlxuICAgICAgICAgIDwvZGl2PlxuICAgICAgICA8L2Rpdj5cbiAgICAgIDwvZGl2PlxuICAgIDwvZGl2PlxuICApO1xufVxuIl0sImZpbGUiOiJDOi9Vc2Vycy9MZW5vdm8vRG93bmxvYWRzL3RodSBtdWMgbGFtIHZpZWMgYWdlbnQvZnJvbnRlbmQvc3JjL2NvbXBvbmVudHMvTG9naW5Nb2RhbC5qc3gifQ==

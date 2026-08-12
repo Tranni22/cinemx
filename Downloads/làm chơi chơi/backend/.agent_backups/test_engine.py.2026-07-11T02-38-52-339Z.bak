@@ -1,0 +1,26 @@
+import subprocess
+import time
+
+ENGINE_PATH = r"C:\Users\Lenovo\Downloads\EMBRYO26\pbrain-embryo26.exe"
+
+print("Starting engine test...")
+p = subprocess.Popen(ENGINE_PATH, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+
+try:
+    p.stdin.write("START 15\n")
+    p.stdin.flush()
+    print("Sent START 15")
+    
+    # Wait for response
+    response = p.stdout.readline()
+    print(f"Engine response: {response}")
+    
+    p.stdin.write("TURN 7,7\n")
+    p.stdin.flush()
+    print("Sent TURN 7,7")
+    
+    response = p.stdout.readline()
+    print(f"Engine response to TURN: {response}")
+
+finally:
+    p.terminate()

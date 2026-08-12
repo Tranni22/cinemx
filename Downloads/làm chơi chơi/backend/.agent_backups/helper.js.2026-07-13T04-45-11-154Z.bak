@@ -1,0 +1,9 @@
+import fs from 'fs';
+import path from 'path';
+
+const parentDir = 'C:\\Users\\Lenovo\\Downloads\\thu muc lam viec agent';
+const dirs = fs.readdirSync(parentDir);
+const targetDirName = dirs.find(d => d.startsWith('web xem phim'));
+const targetPath = path.join(parentDir, targetDirName);
+
+console.log('Target Path:', targetPath);

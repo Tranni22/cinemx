@@ -1,0 +1,44 @@
+import subprocess
+import sys
+
+# Path to the engine
+ENGINE_PATH = r"C:\Users\Lenovo\Downloads\EMBRYO26\pbrain-embryo26.exe"
+
+class CaroUI:
+    def __init__(self, engine_path):
+        self.engine_path = engine_path
+        self.process = None
+
+    def start_engine(self):
+        self.process = subprocess.Popen(
+            self.engine_path,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True
+        )
+
+    def send_command(self, command):
+        if self.process:
+            self.process.stdin.write(command + "\n")
+            self.process.stdin.flush()
+            print(f"Sent: {command}")
+            # Read response
+            response = self.process.stdout.readline()
+            print(f"Engine: {response.strip()}")
+            return response.strip()
+
+    def close(self):
+        if self.process:
+            self.process.terminate()
+
+if __name__ == "__main__":
+    ui = CaroUI(ENGINE_PATH)
+    ui.start_engine()
+    
+    # 15x19 board
+    ui.send_command("START 15")
+    # For now just send something to test
+    # ui.send_command("BEGIN")
+    
+    # ui.close()
